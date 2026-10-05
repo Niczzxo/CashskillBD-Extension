@@ -67,28 +67,83 @@
       .sort(function (a, b) { return LANG_NAMES[a].localeCompare(LANG_NAMES[b]); });
   }
 
-  /** Fetch JSON directly; if the page's CSP blocks the content-script
-   * request, retry through the service worker (which is not CSP-bound). */
-  async function fetchJson(url) {
-    try {
-      var res = await fetch(url, { method: 'GET' });
-      if (!res.ok) throw new Error('Translation service returned HTTP ' + res.status);
-      return await res.json();
-    } catch (e) {
-      if (/^Translation service returned HTTP/.test(e && e.message || '')) throw e;
-      var sw = await new Promise(function (resolve) {
-        try {
-          chrome.runtime.sendMessage({ type: 'CSB_FETCH', url: url }, function (r) { resolve(r); });
-        } catch (e2) { resolve(null); }
-      });
-      if (!sw || !sw.ok) throw new Error('Translation service unreachable');
-      var data = null;
-      try { data = JSON.parse(sw.text); } catch (e3) {}
-      if (!Array.isArray(data) || !Array.isArray(data[0])) {
-        throw new Error('Unexpected translation response');
-      }
-      return data;
+  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+  /** Direct fetch of a JSON translation endpoint. */
+  async function fetchDirect(url) {
+    var res = await fetch(url, { method: 'GET' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return await res.json();
+  }
+
+  /** Same request proxied through the service worker (not bound by the page CSP). */
+  async function fetchViaSW(url) {
+    var sw = await new Promise(function (resolve) {
+      try {
+        chrome.runtime.sendMessage({ type: 'CSB_FETCH', url: url }, function (r) { resolve(r); });
+      } catch (e2) { resolve(null); }
+    });
+    if (!sw || !sw.ok) {
+      var detail = sw && (sw.error || sw.status) ? ' (' + (sw.error || ('HTTP ' + sw.status)) + ')' : '';
+      throw new Error('network unreachable' + detail);
     }
+    try {
+      return JSON.parse(sw.text);
+    } catch (e3) {
+      throw new Error('invalid response data');
+    }
+  }
+
+  /** Fetch JSON directly; on network/CSP failure retry through the service
+   * worker (which is not CSP-bound). Retries once with jittered backoff —
+   * this handles 429 rate limits and transient failures. Throws a short,
+   * diagnosable message like "HTTP 429" or "network unreachable". */
+  async function fetchJson(url) {
+    var lastErr = null;
+    for (var attempt = 0; attempt < 2; attempt++) {
+      if (attempt > 0) await sleep(600 + Math.random() * 900);
+      try {
+        return await fetchDirect(url);
+      } catch (e) {
+        lastErr = e;
+        var isHttp = /^HTTP \d+/.test((e && e.message) || '');
+        if (!isHttp) {
+          try {
+            return await fetchViaSW(url);
+          } catch (e2) {
+            lastErr = e2;
+          }
+        }
+      }
+    }
+    throw lastErr || new Error('request failed');
+  }
+
+  /** Backup translation via MyMemory (api.mymemory.translated.net).
+   * Used automatically for full-page translation when the Google endpoint is
+   * unreachable (network block / rate limit). 400-char chunks — their
+   * per-request limit is 500. Returns the same newline-split array shape as
+   * the Google batch path. */
+  async function translateBatchMyMemory(text, from, to) {
+    var chunks = chunkText(text, 400);
+    var out = [];
+    for (var i = 0; i < chunks.length; i++) {
+      var url = 'https://api.mymemory.translated.net/get?' +
+        'q=' + encodeURIComponent(chunks[i]) +
+        '&langpair=' + encodeURIComponent(from + '|' + to);
+      var json = await fetchJson(url);
+      var status = json && json.responseStatus;
+      var translated = json && json.responseData && json.responseData.translatedText;
+      if (status === 429 || (typeof translated === 'string' && /MYMEMORY WARNING/i.test(translated))) {
+        throw new Error('backup daily limit reached');
+      }
+      if (status !== 200 || typeof translated !== 'string') {
+        throw new Error('backup service error' + (status ? ' (HTTP ' + status + ')' : ''));
+      }
+      var parts = translated.split('\n');
+      for (var j = 0; j < parts.length; j++) out.push(parts[j]);
+    }
+    return out;
   }
 
   var googleProvider = {
@@ -122,6 +177,9 @@
     runId: 0,
     ui: null,
     debouncedRun: null,
+    /** Backup batch translator (MyMemory) — used by full-page translation
+     * when the Google endpoint is unreachable. */
+    translateBatchMyMemory: translateBatchMyMemory,
 
     langName: function (code) {
       code = String(code || '').toLowerCase();

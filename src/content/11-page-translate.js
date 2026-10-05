@@ -311,6 +311,18 @@
     /* ---------------- translation ---------------- */
 
     translateBatch: async function (texts, source, target) {
+      var self = this;
+      try {
+        return await self.translateBatchPrimary(texts, source, target);
+      } catch (e) {
+        // Primary provider unreachable (network block / rate limit) —
+        // try the MyMemory backup service automatically.
+        self.usedBackup = true;
+        return await self.translateBatchBackup(texts, source, target);
+      }
+    },
+
+    translateBatchPrimary: async function (texts, source, target) {
       var provider = CSB.translate.currentProvider();
       var joined = texts.join('\n');
       var out = await provider.detectAndTranslate(joined, source, target);
@@ -330,6 +342,16 @@
       }
       await Promise.all([worker(), worker(), worker(), worker()]);
       return results;
+    },
+
+    translateBatchBackup: async function (texts, source, target) {
+      if (!CSB.translate || !CSB.translate.translateBatchMyMemory) {
+        throw new Error('Backup service unavailable');
+      }
+      var parts = await CSB.translate.translateBatchMyMemory(texts.join('\n'), source, target);
+      var out = new Array(texts.length);
+      for (var i = 0; i < texts.length; i++) out[i] = parts[i] != null ? parts[i] : '';
+      return out;
     },
 
     applyItem: function (it, translated) {
@@ -399,7 +421,8 @@
         return;
       }
       var batches = this.makeBatches(items);
-      var done = 0, self = this, bi = 0;
+      var done = 0, self = this, bi = 0, lastError = '';
+      this.usedBackup = false;
       // Parallel workers: 6 batches in flight at once instead of one by
       // one — this is what makes full-page translation feel near-instant.
       async function worker() {
@@ -410,7 +433,11 @@
             var parts = await self.translateBatch(
               batch.map(function (b) { return b.clean; }), source, target);
             batch.forEach(function (it, i) { self.applyItem(it, parts[i]); });
-          } catch (e) { /* keep originals for this batch */ }
+          } catch (e) {
+            // Keep originals for this batch, but remember why it failed so
+            // the final message can say something useful.
+            lastError = String((e && e.message) || e);
+          }
           done += batch.length;
           self.progress(done, total);
         }
@@ -429,7 +456,9 @@
         this.state = 'idle';
         this.emitState();
         this.renderBar('prompt');
-        this.toast('Translation failed — check your connection and try again');
+        this.toast(lastError
+          ? 'Translation failed (' + lastError + ')'
+          : 'Translation failed — check your connection and try again');
       } else {
         this.state = 'translated';
         this.emitState();

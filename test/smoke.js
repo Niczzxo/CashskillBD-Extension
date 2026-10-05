@@ -278,5 +278,52 @@ t('screenshot has debuggerShot + stitchShot fallback',
   typeof CSB.screenshot.debuggerShot === 'function' &&
   typeof CSB.screenshot.stitchShot === 'function');
 
-console.log('\n' + pass + ' passed, ' + fail + ' failed');
-process.exit(fail ? 1 : 0);
+console.log('v0.0.3 translation resilience:');
+t('translateBatchMyMemory exposed',
+  typeof CSB.translate.translateBatchMyMemory === 'function');
+t('fetchJson retries with backoff',
+  /for \(var attempt = 0; attempt < 2/.test(src('src/content/06-translate.js')) &&
+  /fetchViaSW/.test(src('src/content/06-translate.js')));
+t('translateBatch falls back to backup provider',
+  /translateBatchBackup/.test(src('src/content/11-page-translate.js')) &&
+  /usedBackup = true/.test(src('src/content/11-page-translate.js')));
+t('failure toast shows specific error',
+  /lastError[\s\S]*?\? 'Translation failed \('/.test(src('src/content/11-page-translate.js')));
+t('MyMemory uses 400-char chunks',
+  /chunkText\(text, 400\)/.test(src('src/content/06-translate.js')));
+t('MyMemory detects daily-limit warning',
+  /MYMEMORY WARNING/.test(src('src/content/06-translate.js')));
+
+(async function () {
+  // Functional: primary provider fails -> backup is used automatically.
+  var origProvider = CSB.translate.currentProvider;
+  var origBackup = CSB.translate.translateBatchMyMemory;
+  CSB.translate.currentProvider = function () {
+    return { detectAndTranslate: async function () { throw new Error('HTTP 429'); } };
+  };
+  CSB.translate.translateBatchMyMemory = async function (text) {
+    return String(text).split('\n').map(function () { return 'BACKUP'; });
+  };
+  CSB.pageTranslate.usedBackup = false;
+  try {
+    var res = await CSB.pageTranslate.translateBatch(['a', 'b'], 'zh', 'en');
+    t('backup used when primary fails',
+      res[0] === 'BACKUP' && res[1] === 'BACKUP' && CSB.pageTranslate.usedBackup === true);
+  } catch (e) {
+    t('backup used when primary fails', false);
+  }
+  // Functional: backup also fails -> translateBatch throws (so the caller
+  // can record lastError and show the specific reason).
+  CSB.translate.translateBatchMyMemory = async function () { throw new Error('backup daily limit reached'); };
+  try {
+    await CSB.pageTranslate.translateBatch(['a'], 'zh', 'en');
+    t('both providers failing surfaces the error', false);
+  } catch (e) {
+    t('both providers failing surfaces the error', /backup daily limit/.test(e.message));
+  }
+  CSB.translate.currentProvider = origProvider;
+  CSB.translate.translateBatchMyMemory = origBackup;
+
+  console.log('\n' + pass + ' passed, ' + fail + ' failed');
+  process.exit(fail ? 1 : 0);
+})();
