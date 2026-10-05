@@ -214,16 +214,20 @@
 
   // Keep settings in sync across contexts: a change made in the side panel
   // must reach every tab's content script (and vice versa).
+  // Guarded so re-injection (10-1) doesn't stack duplicate listeners.
   try {
-    chrome.storage.onChanged.addListener(function (changes, area) {
-      if (area !== 'local' || !changes[STORAGE_KEY]) return;
-      var nv = changes[STORAGE_KEY].newValue;
-      if (nv && typeof nv === 'object') {
-        CSB.settings.data = deepMerge(clone(DEFAULTS), nv);
-        if (CSB.panel && CSB.panel.applySettings) { try { CSB.panel.applySettings(); } catch (e) {} }
-        // Tab-side modules that hold applied state must re-apply it.
-        try { if (CSB.forceCopy) CSB.forceCopy.apply(); } catch (e) {}
-      }
-    });
+    if (!window.__CSB_SETTINGS_LISTENER) {
+      window.__CSB_SETTINGS_LISTENER = true;
+      chrome.storage.onChanged.addListener(function (changes, area) {
+        if (area !== 'local' || !changes[STORAGE_KEY]) return;
+        var nv = changes[STORAGE_KEY].newValue;
+        if (nv && typeof nv === 'object') {
+          CSB.settings.data = deepMerge(clone(DEFAULTS), nv);
+          if (CSB.panel && CSB.panel.applySettings) { try { CSB.panel.applySettings(); } catch (e) {} }
+          // Tab-side modules that hold applied state must re-apply it.
+          try { if (CSB.forceCopy) CSB.forceCopy.apply(); } catch (e) {}
+        }
+      });
+    }
   } catch (e) {}
 })();

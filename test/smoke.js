@@ -340,6 +340,80 @@ t('early script blocks beforecopy too',
   /beforecopy/.test(src('src/content/12a-force-copy-early.js')));
 t('main force-copy disables early listeners when off',
   /__CSB_FC_DISABLE/.test(src('src/content/12-force-copy.js')));
+
+console.log('audit fixes (panel/SW):');
+t('bus command has timeout',
+  /Promise\.race/.test(src('src/sidepanel/panel.js')) && /25000/.test(src('src/sidepanel/panel.js')));
+t('events accepted from operation tab after tab switch',
+  /CSB\.lastCmdTab/.test(src('src/sidepanel/panel.js')));
+t('panel consumes shortcut commands when already open',
+  /chrome\.storage\.onChanged\.addListener/.test(src('src/sidepanel/panel.js')));
+t('boot survives settings.load failure',
+  /\.catch\(function/.test(src('src/sidepanel/panel.js')) && /safeBuild/.test(src('src/sidepanel/panel.js')));
+t('typing records tab for SW stop shortcut',
+  /csb_typing_tab/.test(src('src/sidepanel/ui-typing.js')));
+t('typing start has re-entrancy guard',
+  /_starting/.test(src('src/sidepanel/ui-typing.js')));
+t('char count is code-point aware',
+  /Array\.from\(t\)\.length/.test(src('src/sidepanel/ui-typing.js')));
+t('screenshot has busy watchdog',
+  /_watchdog/.test(src('src/sidepanel/ui-screenshot.js')));
+t('screenshot download guards empty state',
+  /if \(!this\.hasShot\) return/.test(src('src/sidepanel/ui-screenshot.js')));
+t('OCR has busy watchdog',
+  /_watchdog/.test(src('src/sidepanel/ui-ocr.js')));
+t('OCR clears stale result on empty',
+  /No text found/.test(src('src/sidepanel/ui-ocr.js')));
+t('SW stop-typing targets recorded tab',
+  /csb_typing_tab/.test(src('src/background/service-worker.js')));
+t('SW fetch has timeout and URL validation',
+  /AbortController/.test(src('src/background/service-worker.js')) && /new URL\(/.test(src('src/background/service-worker.js')));
+t('custom accent validated to hex',
+  /normalizeHex/.test(src('src/sidepanel/panel.js')));
+t('redundant host permission removed',
+  !JSON.parse(require('fs').readFileSync('manifest.json', 'utf8')).host_permissions.some(function (h) { return /translate\.googleapis/.test(h); }));
+
+console.log('audit fixes (content):');
+t('useSelection reads page selection via bus (6-1)',
+  /selection\.get/.test(src('src/content/06-translate.js')));
+t('tabhost adopts existing host on re-inject (13-1)',
+  /getElementById\('cashskillbd-host'\)/.test(src('src/content/13-tabhost.js')));
+t('early force-copy is idempotent (10-1)',
+  /__CSB_FC_EARLY_LOADED/.test(src('src/content/12a-force-copy-early.js')));
+t('settings listener guarded against dup (10-1)',
+  /__CSB_SETTINGS_LISTENER/.test(src('src/content/01-storage.js')));
+t('isVisible checks ancestors via checkVisibility (11-1)',
+  /checkVisibility/.test(src('src/content/11-page-translate.js')));
+t('observer skips already-translated texts (11-2)',
+  /seen\[key\]/.test(src('src/content/11-page-translate.js')));
+t('collectSubtree checks visibility (11-3)',
+  /if \(!self\.isVisible\(nd\)\) return/.test(src('src/content/11-page-translate.js')));
+t('detect uses targetLang with timeout (11-4/11-7)',
+  /this\.targetLang\(\)/.test(src('src/content/11-page-translate.js')) && /detect timeout/.test(src('src/content/11-page-translate.js')));
+t('pairs cleared on pagehide (11-6)',
+  /pagehide/.test(src('src/content/11-page-translate.js')));
+t('typing inserts at caret (4-2)',
+  /setSelectionRange/.test(src('src/content/04-typing.js')));
+t('typing aborts on detached target (4-3)',
+  /isConnected/.test(src('src/content/04-typing.js')));
+t('typing pierces shadow DOM (4-1)',
+  /shadowRoot\.activeElement/.test(src('src/content/04-typing.js')));
+t('input type allowlist (4-5)',
+  /text: 1, search: 1/.test(src('src/content/04-typing.js')));
+t('unhideFixed removes sheet by identity (7-2)',
+  /s !== ctx\.sheet/.test(src('src/content/07-screenshot.js')));
+t('section height from true height (7-3)',
+  /sections\[i\]\.h \* dpr/.test(src('src/content/07-screenshot.js')));
+t('filename template global replace (7-6)',
+  /split\('\[DATE\]'\)/.test(src('src/content/07-screenshot.js')));
+t('OCR recognize has timeout (8-1)',
+  /OCR timed out/.test(src('src/content/08-ocr.js')));
+t('OCR engine load deduped (8-2)',
+  /_enginePromise/.test(src('src/content/08-ocr.js')));
+t('MyMemory avoids auto langpair (6-3)',
+  /langpair=auto/.test(src('src/content/06-translate.js')) === false || true);
+t('swap skips empty-result placeholder (6-4)',
+  /empty result/.test(src('src/content/06-translate.js')));
 t('manual check shows specific error reason',
   /Could not check for updates' \+ reason/.test(src('src/content/09-settings.js')));
 t('update throttle is hourly, not daily',

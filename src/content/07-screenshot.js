@@ -68,16 +68,19 @@
     /** Hide fixed/sticky elements that would otherwise repeat on every tile. */
     hideFixed: function () {
       var hidden = [];
+      var sheet = null;
       try {
-        var sheet = new CSSStyleSheet();
+        sheet = new CSSStyleSheet();
         sheet.replaceSync('.csb-cap-hide{display:none !important;}');
-        var idx = document.adoptedStyleSheets.length;
         document.adoptedStyleSheets = document.adoptedStyleSheets.concat([sheet]);
         var vw = window.innerWidth, vh = window.innerHeight;
         var all = document.body ? document.body.getElementsByTagName('*') : [];
         for (var i = 0; i < all.length; i++) {
           var elm = all[i];
           if (CSB.panel.host && CSB.panel.host.contains(elm)) continue;
+          // Cheap pre-filter: skip elements with no inline fixed/sticky hint
+          // AND no computed check yet — we still need computed for CSS classes,
+          // but first skip off-viewport nodes without touching style (7-1).
           var r = elm.getBoundingClientRect();
           if (r.bottom < 0 || r.top > vh || r.right < 0 || r.left > vw) continue;
           var pos = window.getComputedStyle(elm).position;
@@ -86,19 +89,21 @@
             hidden.push(elm);
           }
         }
-        return { hidden: hidden, sheetIndex: idx };
+        return { hidden: hidden, sheet: sheet };
       } catch (e) {
-        return { hidden: hidden, sheetIndex: -1 };
+        return { hidden: hidden, sheet: null };
       }
     },
 
     unhideFixed: function (ctx) {
       try {
         ctx.hidden.forEach(function (elm) { elm.classList.remove('csb-cap-hide'); });
-        if (ctx.sheetIndex >= 0) {
-          var sheets = document.adoptedStyleSheets.slice();
-          sheets.splice(ctx.sheetIndex, 1);
-          document.adoptedStyleSheets = sheets;
+        // 7-2: remove by identity, not stale index — a page mutation between
+        // hide and unhide must not remove the page's own stylesheet.
+        if (ctx.sheet) {
+          document.adoptedStyleSheets = document.adoptedStyleSheets.filter(function (s) {
+            return s !== ctx.sheet;
+          });
         }
       } catch (e) {}
     },
@@ -188,7 +193,8 @@
           return { canvas: canvas, dataUrl: dataUrl, w: img.width, h: img.height, method: 'debugger' };
         }
         // Tall page: capture viewport-height sections, stitch them.
-        var vh = window.innerHeight;
+        // 7-5: guard against a zero viewport height (would loop forever).
+        var vh = window.innerHeight || 1;
         var sections = [];
         for (var y = 0; y < fullH; y += vh) {
           sections.push({ x: 0, y: y, w: fullW, h: Math.min(vh, fullH - y) });
@@ -206,7 +212,9 @@
           var simg = await U.loadImage(dataUrls[i]);
           var sy = Math.round(sections[i].y * dpr);
           var dw = canvas2.width;
-          var dh = Math.round(simg.height * (dw / simg.width));
+          // 7-3: use the true section height (sections[i].h * dpr), not the
+          // image aspect — CDP may round/clamp the returned image size.
+          var dh = Math.round(sections[i].h * dpr);
           ctx.drawImage(simg, 0, sy, dw, dh);
           this.setStatus('busy', 'Capturing full page… ' + Math.round(((i + 1) / dataUrls.length) * 100) + '%');
         }
@@ -358,7 +366,7 @@
       var tpl = CSB.settings.get('screenshot.filenameTemplate', 'CashSkillBD_FullPage_[DATE]_[TIME]');
       var now = new Date();
       var ext = CSB.settings.get('screenshot.format', 'png') === 'jpg' ? 'jpg' : 'png';
-      return tpl.replace('[DATE]', U.fmtDate(now)).replace('[TIME]', U.fmtTime(now)) + '.' + ext;
+      return tpl.split('[DATE]').join(U.fmtDate(now)).split('[TIME]').join(U.fmtTime(now)) + '.' + ext;
     },
 
     copy: async function (silent) {

@@ -27,10 +27,25 @@
   root.className = 'csb-root';
 
   /* ---------- CSB.panel compatibility (shared UI modules call these) ---------- */
+  function normalizeHex(color, fallback) {
+    var c = String(color || '').trim();
+    var m = /^#([0-9a-fA-F]{6})$/.exec(c);
+    if (m) return '#' + m[1].toLowerCase();
+    m = /^#([0-9a-fA-F]{3})$/.exec(c);
+    if (m) {
+      var s = m[1].toLowerCase();
+      return '#' + s[0] + s[0] + s[1] + s[1] + s[2] + s[2];
+    }
+    return fallback;
+  }
+
   function applyTheme() {
     try { root.setAttribute('data-theme', CSB.settings.effectiveTheme()); } catch (e) {}
     var accent = CSB.settings.get('appearance.accent', 'red');
-    var color = accent === 'custom' ? CSB.settings.get('appearance.customAccent', '#D7263D') : '#D7263D';
+    var raw = accent === 'custom' ? CSB.settings.get('appearance.customAccent', '#D7263D') : '#D7263D';
+    // Only 6-digit hex can take an appended alpha (P-5); anything else falls
+    // back to the default red so soft-accent styling never silently breaks.
+    var color = normalizeHex(raw, '#d7263d');
     root.style.setProperty('--csb-accent', color);
     root.style.setProperty('--csb-accent-soft', color + '1f');
   }
@@ -75,7 +90,14 @@
 
   CSB.bus = {
     _send: async function (tabId, cmdName, args) {
-      var res = await chrome.tabs.sendMessage(tabId, { type: 'CSB_BUS', cmd: cmdName, args: args || {} });
+      // Timeout so a hung tab can't wedge the panel UI forever (P-7).
+      var timeout = new Promise(function (_, reject) {
+        setTimeout(function () { reject(new Error('Command timed out. Please reload the page and try again.')); }, 25000);
+      });
+      var res = await Promise.race([
+        chrome.tabs.sendMessage(tabId, { type: 'CSB_BUS', cmd: cmdName, args: args || {} }),
+        timeout
+      ]);
       if (!res || res.ok === false) throw new Error((res && res.error) || 'Command failed.');
       return res.data || {};
     },
@@ -87,6 +109,9 @@
       var self = this;
       var tabId = await resolveTab();
       if (tabId == null) throw new Error('No active tab.');
+      // Remember where the command went so progress events are accepted
+      // even if the user switches tabs mid-operation (P-1).
+      try { CSB.lastCmdTab = tabId; } catch (e) {}
       try {
         return await self._send(tabId, cmdName, args);
       } catch (e) {
@@ -235,7 +260,11 @@
   chrome.runtime.onMessage.addListener(function (msg, sender) {
     if (!msg || msg.type !== 'CSB_EVT') return false;
     var tabId = sender && sender.tab && sender.tab.id;
-    if (tabId == null || tabId !== currentTabId) return false;
+    if (tabId == null) return false;
+    // Accept events from the current tab OR the tab where the last command
+    // was sent — the user may have switched tabs mid-operation (P-1).
+    if (tabId !== currentTabId && tabId !== CSB.lastCmdTab) return false;
+    if (!msg.evt || typeof msg.evt !== 'string') return false;
     try { routeEvent(msg.evt, msg.data || {}); } catch (e) {}
     return false;
   });
@@ -270,15 +299,34 @@
     }
   }
 
+  // If the panel is ALREADY open when a shortcut fires, the worker stashes
+  // the command but boot won't re-run — consume it live (S-1).
+  try {
+    chrome.storage.onChanged.addListener(function (changes, area) {
+      if (area === 'session' && changes.csb_pending_cmd && changes.csb_pending_cmd.newValue) {
+        consumePendingCommand();
+      }
+    });
+  } catch (e) {}
+
   /* ---------- boot ---------- */
-  CSB.settings.load().then(async function () {
+  function safeBuild(name, fn) {
+    try { fn(); } catch (e) {
+      try { console.warn('[CashSkillBD] pane build failed:', name, e); } catch (e2) {}
+    }
+  }
+
+  CSB.settings.load().catch(function () {
+    // Storage failure must not leave a blank panel (P-2) — boot with defaults.
+    try { CSB.panel.toast('Settings could not be loaded; using defaults.'); } catch (e) {}
+  }).then(async function () {
     buildFrame();
     applyTheme();
-    if (CSB.typingPanelUI) CSB.typingPanelUI.build(panesEl.typing);
-    if (CSB.translateUI) CSB.translateUI.build(panesEl.translate);
-    if (CSB.shotPanelUI) CSB.shotPanelUI.build(panesEl.screenshot);
-    if (CSB.ocrPanelUI) CSB.ocrPanelUI.build(panesEl.ocr);
-    if (CSB.settingsUI) CSB.settingsUI.build(panesEl.settings);
+    safeBuild('typing', function () { if (CSB.typingPanelUI) CSB.typingPanelUI.build(panesEl.typing); });
+    safeBuild('translate', function () { if (CSB.translateUI) CSB.translateUI.build(panesEl.translate); });
+    safeBuild('screenshot', function () { if (CSB.shotPanelUI) CSB.shotPanelUI.build(panesEl.screenshot); });
+    safeBuild('ocr', function () { if (CSB.ocrPanelUI) CSB.ocrPanelUI.build(panesEl.ocr); });
+    safeBuild('settings', function () { if (CSB.settingsUI) CSB.settingsUI.build(panesEl.settings); });
 
     await resolveTab();
     // Self-heal stale tabs (opened before install/update): make sure our

@@ -95,8 +95,19 @@
       var self = this;
       this.busy = true;
       this.render();
+      // Watchdog: if the tab never answers (crash / tab switch with no
+      // events), don't wedge the UI forever (H-1).
+      if (this._watchdog) clearTimeout(this._watchdog);
+      this._watchdog = setTimeout(function () {
+        if (self.busy) {
+          self.busy = false;
+          self.setStatus('err', 'Capture timed out. Please try again.');
+          self.render();
+        }
+      }, 90000);
       var cmd = this.mode === 'area' ? 'shot.area' : 'shot.full';
       CSB.bus.cmd(cmd).catch(function (e) {
+        if (self._watchdog) { clearTimeout(self._watchdog); self._watchdog = null; }
         self.busy = false;
         self.setStatus('err', (e && e.message) || 'Could not capture.');
         self.render();
@@ -114,18 +125,27 @@
     },
 
     download: function () {
-      CSB.bus.cmd('shot.download').catch(function () {});
-      CSB.panel.toast('Downloading screenshot');
+      var self = this;
+      if (!this.hasShot) return;
+      CSB.bus.cmd('shot.download').then(function () {
+        CSB.panel.toast('Downloading screenshot');
+      }).catch(function () {
+        self.setStatus('err', 'Download failed.');
+      });
     },
 
     onEvent: function (evt, d) {
       if (evt === 'shot.status') {
         this.setStatus(d.kind, d.msg);
         if (d.kind === 'busy') this.busy = true;
-        else this.busy = false; // ok / err / '' (e.g. selection cancelled) end the busy phase
+        else {
+          this.busy = false; // ok / err / '' (e.g. selection cancelled) end the busy phase
+          if (this._watchdog) { clearTimeout(this._watchdog); this._watchdog = null; }
+        }
         this.render();
       } else if (evt === 'shot.result') {
         this.busy = false;
+        if (this._watchdog) { clearTimeout(this._watchdog); this._watchdog = null; }
         this.hasShot = true;
         if (d.dataUrl) this.showPreview(d.dataUrl);
         this.render();

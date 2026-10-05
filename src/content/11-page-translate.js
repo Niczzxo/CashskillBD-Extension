@@ -115,8 +115,16 @@
     },
 
     detectViaEndpoint: async function (sample) {
+      // 11-4: detect toward the user's target language, not hardcoded 'en'.
+      // 11-7: never hang — 20s timeout.
       var provider = CSB.translate.currentProvider();
-      var out = await provider.detectAndTranslate(sample.slice(0, 500), 'auto', 'en');
+      var target = this.targetLang();
+      var out = await Promise.race([
+        provider.detectAndTranslate(sample.slice(0, 500), 'auto', target),
+        new Promise(function (_, reject) {
+          setTimeout(function () { reject(new Error('detect timeout')); }, 20000);
+        })
+      ]);
       return String(out.detected || 'auto').toLowerCase().split(/[-_]/)[0];
     },
 
@@ -247,8 +255,16 @@
       if (v === undefined) {
         v = true;
         try {
-          var cs = getComputedStyle(el);
-          if (cs.display === 'none' || cs.visibility === 'hidden') v = false;
+          // checkVisibility covers the element AND its ancestors (11-1);
+          // fall back to manual walk on older Chrome.
+          if (el.checkVisibility) {
+            v = el.checkVisibility({ checkVisibilityCSS: true, checkOpacity: false, checkSelectable: false });
+          } else {
+            for (var n = el; n && n !== document.documentElement; n = n.parentElement) {
+              var cs = getComputedStyle(n);
+              if (cs.display === 'none' || cs.visibility === 'hidden') { v = false; break; }
+            }
+          }
         } catch (e) {}
         this._visCache.set(el, v);
       }
@@ -292,12 +308,13 @@
       var self = this;
       if (nd.nodeType === 3) {
         var t = this.acceptTextNode(nd);
-        if (t) out.push({ node: nd, text: t });
+        if (t && self.isVisible(nd.parentElement)) out.push({ node: nd, text: t });
         return;
       }
       if (nd.nodeType !== 1) return;
       if (nd.closest && nd.closest('[data-csb-ui],#cashskillbd-host,#cashskillbd-pt-host')) return;
       if (SKIP_TAGS.test(nd.tagName)) return;
+      if (!self.isVisible(nd)) return; // 11-3: don't translate hidden dynamic nodes
       try {
         var walker = document.createTreeWalker(nd, NodeFilter.SHOW_TEXT, null);
         var n;
@@ -411,6 +428,14 @@
       this.emitState();
       this.cancelRequested = false;
       this.pairs = [];
+      // 11-6: drop DOM references on navigation so detached nodes can GC.
+      try {
+        if (!this._pagehideHook) {
+          this._pagehideHook = true;
+          var self2 = this;
+          window.addEventListener('pagehide', function () { self2.pairs = []; });
+        }
+      } catch (e) {}
       this.renderBar('working');
       var items = this.prepareItems(this.collectItems());
       var total = items.length;
@@ -502,6 +527,10 @@
         if (self.state !== 'translated' || !pending.length) { pending = []; return; }
         var batch = pending;
         pending = [];
+        // 11-2/11-5: reset the visibility cache each flush (DOM changed), and
+        // skip texts already translated to avoid burning quota on tickers /
+        // live feeds that re-insert the same strings.
+        self._visCache = new Map();
         var items = self.prepareItems(batch);
         if (!items.length) return;
         var target = self.targetLang();
@@ -525,12 +554,20 @@
           await Promise.all(workers);
         })();
       }
+      var seen = Object.create(null); // 11-2: hash set of translated texts
       var obs = new MutationObserver(function (muts) {
         if (self.state !== 'translated') return;
         muts.forEach(function (m) {
           if (m.type !== 'childList') return;
           Array.prototype.forEach.call(m.addedNodes, function (nd) {
+            var before = pending.length;
             self.collectSubtree(nd, pending);
+            // Drop texts we've already translated (live tickers re-insert).
+            for (var i = before; i < pending.length; i++) {
+              var key = pending[i].text;
+              if (seen[key]) { pending.splice(i, 1); i--; before--; }
+              else seen[key] = 1;
+            }
           });
         });
         if (pending.length && !timer) timer = setTimeout(flush, 1200);

@@ -13,6 +13,10 @@
 'use strict';
 
 (function () {
+  // Idempotency (10-1): if re-injected, don't orphan the previous listeners.
+  if (window.__CSB_FC_EARLY_LOADED) return;
+  window.__CSB_FC_EARLY_LOADED = true;
+
   var EVENTS = ['beforecopy', 'copy', 'cut', 'contextmenu', 'selectstart', 'dragstart'];
 
   function blocker(e) {

@@ -134,7 +134,10 @@
     updateCounts: function () {
       var t = this.el.textarea.value || '';
       var words = t.trim() ? t.trim().split(/\s+/).length : 0;
-      this.el.charCount.textContent = t.length;
+      // Count Unicode code points (not UTF-16 units) to match the engine.
+      var chars = 0;
+      try { chars = Array.from(t).length; } catch (e) { chars = t.length; }
+      this.el.charCount.textContent = chars;
       this.el.wordCount.textContent = words;
     },
 
@@ -146,6 +149,7 @@
 
     setProgress: function (pct, charIndex, total, word) {
       if (!this.el) return;
+      pct = Math.max(0, Math.min(100, Math.round(pct) || 0));
       this.el.bar.style.width = pct + '%';
       this.el.pct.textContent = pct + '%';
       this.el.word.textContent = word ? '“' + word + '”' : '—';
@@ -164,10 +168,23 @@
     start: async function () {
       var text = (this.el.textarea.value || '');
       if (!text.trim()) { this.setStatus('err', 'Please enter some text first.'); return; }
+      // Re-entrancy guard: ignore double-clicks while a start is in flight.
+      if (this._starting) return;
+      this._starting = true;
+      this.el.startBtn.disabled = true;
       try {
         await CSB.bus.cmd('typing.start', { text: text });
+        // Record which tab is typing so the SW stop-typing shortcut (and
+        // cross-tab progress events) target the right tab.
+        try {
+          var tabId = CSB.bus.tabId();
+          if (tabId != null) await chrome.storage.session.set({ csb_typing_tab: tabId });
+        } catch (e) {}
       } catch (e) {
         this.setStatus('err', (e && e.message) || 'Could not start typing.');
+      } finally {
+        this._starting = false;
+        this.render();
       }
     },
 
@@ -185,6 +202,10 @@
         this.setProgress(d.pct || 0, d.charIndex || 0, d.total || 0, d.word || '');
       } else if (evt === 'typing.state') {
         this.state = d.state || 'IDLE';
+        // Typing finished — clear the recorded tab.
+        if (this.state !== 'TYPING') {
+          try { chrome.storage.session.remove('csb_typing_tab'); } catch (e) {}
+        }
         this.render();
       }
     }

@@ -125,12 +125,14 @@
    * per-request limit is 500. Returns the same newline-split array shape as
    * the Google batch path. */
   async function translateBatchMyMemory(text, from, to) {
+    // 6-3: MyMemory rejects langpair=auto|X — fall back to English source.
+    var src = (from === 'auto' || !from) ? 'en' : from;
     var chunks = chunkText(text, 400);
     var out = [];
     for (var i = 0; i < chunks.length; i++) {
       var url = 'https://api.mymemory.translated.net/get?' +
         'q=' + encodeURIComponent(chunks[i]) +
-        '&langpair=' + encodeURIComponent(from + '|' + to);
+        '&langpair=' + encodeURIComponent(src + '|' + to);
       var json = await fetchJson(url);
       var status = json && json.responseStatus;
       var translated = json && json.responseData && json.responseData.translatedText;
@@ -166,7 +168,9 @@
         translatedParts.push(data[0].map(function (seg) { return seg[0] || ''; }).join(''));
         if (data[2]) detected = String(data[2]).toLowerCase();
       }
-      return { translated: translatedParts.join(' '), detected: detected };
+      // 6-2: join chunks without inserting spaces — spaceless scripts
+      // (Chinese/Japanese/Thai) would get corrupted otherwise.
+      return { translated: translatedParts.join(''), detected: detected };
     }
   };
 
@@ -261,8 +265,9 @@
       CSB.settings.set('translation.sourceLanguage', oldTarget);
       CSB.settings.set('translation.targetLanguage', oldSource);
       // Move the translation into the source box, like Google Translate.
+      // 6-4: don't copy the '(empty result)' placeholder into the input.
       var resText = this.ui.result.textContent.trim();
-      if (resText) this.ui.input.value = resText.slice(0, 5000);
+      if (resText && resText !== '(empty result)') this.ui.input.value = resText.slice(0, 5000);
       this.ui.charCount.textContent = this.ui.input.value.length + ' / 5000';
       this.syncSwap();
       this.run();
@@ -274,14 +279,27 @@
       }
     },
 
-    useSelection: function () {
+    useSelection: async function () {
+      var self = this;
       var sel = '';
-      try { sel = window.getSelection().toString(); } catch (e) {}
+      // The translate UI lives in the side panel; the page's selection must
+      // be read from the tab via the bus (6-1). Fall back to the local
+      // selection for contexts where the bus is unavailable.
+      try {
+        if (CSB.bus && CSB.bus.cmd) {
+          var r = await CSB.bus.cmd('selection.get');
+          sel = (r && r.text) || '';
+        } else {
+          sel = window.getSelection().toString();
+        }
+      } catch (e) {
+        try { sel = window.getSelection().toString(); } catch (e2) {}
+      }
       if (sel && sel.trim()) {
-        this.ui.input.value = sel.trim().slice(0, 5000);
-        this.onInput();
+        self.ui.input.value = sel.trim().slice(0, 5000);
+        self.onInput();
       } else {
-        this.setStatus('err', 'No text is selected on the page.');
+        self.setStatus('err', 'No text is selected on the page.');
       }
     },
 

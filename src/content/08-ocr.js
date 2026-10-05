@@ -254,16 +254,23 @@
 
     ensureEngine: async function () {
       if (typeof Tesseract !== 'undefined' && Tesseract.createWorker) return;
-      var ok = await new Promise(function (resolve) {
-        try {
-          chrome.runtime.sendMessage({ type: 'CSB_LOAD_TESSERACT' }, function (res) {
+      // 8-2: dedupe concurrent loads — two recognize() calls must not race.
+      if (this._enginePromise) return this._enginePromise;
+      var self = this;
+      this._enginePromise = (async function () {
+        var ok = await new Promise(function (resolve) {
+          try {
+            chrome.runtime.sendMessage({ type: 'CSB_LOAD_TESSERACT' }, function (res) {
             resolve(!!(res && res.ok));
           });
         } catch (e) { resolve(false); }
       });
       if (!ok || typeof Tesseract === 'undefined') {
+        self._enginePromise = null; // allow retry on failure
         throw new Error('OCR engine failed to load.');
       }
+      })();
+      return this._enginePromise;
     },
 
     getWorker: async function (lang) {
@@ -297,7 +304,18 @@
     recognize: async function (canvas) {
       await this.ensureEngine();
       var worker = await this.getWorker(this.tessLang());
-      var res = await worker.recognize(canvas);
+      // 8-1: never hang forever — 60s timeout, terminate the worker on stall.
+      var self = this;
+      var res = await Promise.race([
+        worker.recognize(canvas),
+        new Promise(function (_, reject) {
+          setTimeout(function () { reject(new Error('OCR timed out. Please try a smaller area.')); }, 60000);
+        })
+      ]).catch(async function (e) {
+        try { await worker.terminate(); } catch (te) {}
+        self.worker = null;
+        throw e;
+      });
       return res && res.data ? res.data.text : '';
     },
 

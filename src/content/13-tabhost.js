@@ -18,6 +18,15 @@
     ensureHost: function () {
       if (this.host) return;
       try {
+        // Re-injection guard (10-1/13-1): if a host from a previous injection
+        // already exists, adopt it instead of creating a duplicate.
+        var existing = document.getElementById('cashskillbd-host');
+        if (existing && existing.shadowRoot) {
+          this.host = existing;
+          var prevRoot = existing.shadowRoot.querySelector('.csb-root');
+          if (prevRoot) this.root = prevRoot;
+          return;
+        }
         var host = document.createElement('div');
         host.id = 'cashskillbd-host';
         // Invisible by default — overlays opt into pointer events themselves.

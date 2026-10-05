@@ -63,7 +63,17 @@
       var self = this;
       this.busy = true;
       this.render();
+      // Watchdog: Esc-cancel or a lost tab must not wedge the UI (O-1).
+      if (this._watchdog) clearTimeout(this._watchdog);
+      this._watchdog = setTimeout(function () {
+        if (self.busy) {
+          self.busy = false;
+          self.setStatus('', 'Ready');
+          self.render();
+        }
+      }, 120000);
       CSB.bus.cmd('ocr.select').catch(function (e) {
+        if (self._watchdog) { clearTimeout(self._watchdog); self._watchdog = null; }
         self.busy = false;
         self.setStatus('err', (e && e.message) || 'Could not start selection.');
         self.render();
@@ -92,11 +102,20 @@
       if (evt === 'ocr.status') {
         this.setStatus(d.kind, d.msg);
         if (d.kind === 'busy') this.busy = true;
-        else this.busy = false;
+        else {
+          this.busy = false;
+          if (this._watchdog) { clearTimeout(this._watchdog); this._watchdog = null; }
+        }
         this.render();
       } else if (evt === 'ocr.result') {
         this.busy = false;
-        if (this.el && d.text) this.el.result.textContent = d.text;
+        if (this._watchdog) { clearTimeout(this._watchdog); this._watchdog = null; }
+        if (this.el) {
+          // Empty result: clear stale text so the old result isn't mistaken
+          // for the new one (O-2).
+          this.el.result.textContent = d.text || '';
+          if (!d.text) this.setStatus('', 'No text found in the selected region.');
+        }
         this.render();
       }
     }

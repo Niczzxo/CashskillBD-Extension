@@ -154,18 +154,30 @@ chrome.action.onClicked.addListener(async () => {
 // session storage so the panel picks them up race-free on boot;
 // stop-typing goes straight to the tab's engine (no panel popup needed).
 chrome.commands.onCommand.addListener(async (command) => {
-  const tab = await getActiveTab();
-  if (!tab || tab.id == null) return;
-  if (!(await ensureContent(tab.id, true))) return;
-  if (command === 'stop-typing') {
-    try { await chrome.tabs.sendMessage(tab.id, { type: 'CSB_BUS', cmd: 'typing.stop', args: {} }); } catch (e) {}
-    return;
-  }
-  if (command === 'open-panel' || command === 'start-typing' ||
-      command === 'take-screenshot' || command === 'text-select') {
-    try { await chrome.storage.session.set({ csb_pending_cmd: command }); } catch (e) {}
-    await openSidePanel(tab.id);
-  }
+  try {
+    const tab = await getActiveTab();
+    if (!tab || tab.id == null) return;
+    if (!(await ensureContent(tab.id, true))) return;
+    if (command === 'stop-typing') {
+      // Stop typing wherever it's actually running (S-3): prefer the tab
+      // recorded by the panel when typing started, fall back to active tab.
+      let stopTabId = tab.id;
+      try {
+        const r = await chrome.storage.session.get('csb_typing_tab');
+        if (r && r.csb_typing_tab != null) stopTabId = r.csb_typing_tab;
+      } catch (e) {}
+      try { await chrome.tabs.sendMessage(stopTabId, { type: 'CSB_BUS', cmd: 'typing.stop', args: {} }); } catch (e) {}
+      if (stopTabId !== tab.id) {
+        try { await chrome.tabs.sendMessage(tab.id, { type: 'CSB_BUS', cmd: 'typing.stop', args: {} }); } catch (e2) {}
+      }
+      return;
+    }
+    if (command === 'open-panel' || command === 'start-typing' ||
+        command === 'take-screenshot' || command === 'text-select') {
+      try { await chrome.storage.session.set({ csb_pending_cmd: command }); } catch (e) {}
+      await openSidePanel(tab.id);
+    }
+  } catch (e) { /* never leave an unhandled rejection (S-4) */ }
 });
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
@@ -184,13 +196,30 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     // Network fetch on behalf of a tab: the service worker is not subject
     // to the page's Content-Security-Policy, so this succeeds where a
     // content-script fetch would be blocked (e.g. Taobao).
-    fetch(msg.url, { method: 'GET', redirect: 'follow' })
+    // Validate the URL first (S-5): only http/https, no credential leaks.
+    let fetchUrl = null;
+    try {
+      const u = new URL(String(msg.url || ''));
+      if (u.protocol !== 'http:' && u.protocol !== 'https:') throw new Error('bad protocol');
+      fetchUrl = u.toString();
+    } catch (e) {
+      sendResponse({ ok: false, error: 'invalid url' });
+      return false;
+    }
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => { try { ctrl.abort(); } catch (e) {} }, 30000);
+    fetch(fetchUrl, { method: 'GET', redirect: 'follow', signal: ctrl.signal })
       .then(async (res) => {
+        clearTimeout(timer);
         var text = '';
         try { text = await res.text(); } catch (e) {}
-        sendResponse({ ok: res.ok, status: res.status, text: text, url: res.url || msg.url });
+        sendResponse({ ok: res.ok, status: res.status, text: text, url: res.url || fetchUrl });
       })
-      .catch((err) => sendResponse({ ok: false, error: String((err && err.message) || err) }));
+      .catch((err) => {
+        clearTimeout(timer);
+        const aborted = err && err.name === 'AbortError';
+        sendResponse({ ok: false, error: aborted ? 'timeout' : String((err && err.message) || err) });
+      });
     return true; // async response
   }
 

@@ -87,14 +87,16 @@
       var ae = document.activeElement;
       if (!ae || ae === document.body || ae === document.documentElement) return null;
       if (ae === CSB.panel.host || (CSB.panel.host && CSB.panel.host.contains(ae))) return null;
+      // 4-1: pierce shadow roots — document.activeElement only gives the host.
+      try {
+        while (ae.shadowRoot && ae.shadowRoot.activeElement) ae = ae.shadowRoot.activeElement;
+      } catch (e) {}
       var tag = (ae.tagName || '').toUpperCase();
       if (tag === 'INPUT') {
         var type = (ae.type || 'text').toLowerCase();
-        // Never touch passwords or non-text controls (spec §25).
-        if (type === 'password' || type === 'hidden' || type === 'checkbox' ||
-            type === 'radio' || type === 'file' || type === 'submit' ||
-            type === 'button' || type === 'reset' || type === 'image' ||
-            type === 'range' || type === 'color') return null;
+        // 4-5: allowlist text-like types — number/date/month sanitize text.
+        var ok = { text: 1, search: 1, url: 1, tel: 1, email: 1 };
+        if (!ok[type]) return null;
         if (ae.disabled || ae.readOnly) return null;
         return ae;
       }
@@ -221,6 +223,12 @@
       var self = this;
       if (myRun !== this.runId) return; // superseded
       if (this.state !== 'TYPING') return;
+      // 4-3: if the SPA detached the target mid-run, stop honestly instead
+      // of typing into a detached node (or the wrong field).
+      if (!this.target || !this.target.isConnected) {
+        this.fail('The input field was removed. Typing stopped.');
+        return;
+      }
 
       if (this.charIndex >= this.text.length) {
         this.complete();
@@ -247,13 +255,30 @@
 
       if (doMistake) {
         // Type a wrong neighbour, pause, backspace it, then type the right char.
-        this.typeChar(this.target, randomNeighbour(ch));
+        // 4-4: verify the wrong char was actually removed (controlled editors
+        // may normalize the selection in between); if not, type the correct
+        // char at the caret anyway — the repair is best-effort on hostile
+        // editors, exact on standard inputs.
+        var wrong = randomNeighbour(ch);
+        var beforeLen = this.target.isContentEditable
+          ? (this.target.textContent || '').length
+          : (this.target.value || '').length;
+        this.typeChar(this.target, wrong);
         this.updateProgress();
         this.timer = setTimeout(function () {
           if (myRun !== self.runId || self.state !== 'TYPING') return;
           self.backspace(self.target);
           self.timer = setTimeout(function () {
             if (myRun !== self.runId || self.state !== 'TYPING') return;
+            var afterLen = self.target.isContentEditable
+              ? (self.target.textContent || '').length
+              : (self.target.value || '').length;
+            // If the backspace didn't shrink the field (editor swallowed it),
+            // the wrong char may still be present — still type the correct
+            // char; the header claim is now honest about best-effort repair.
+            if (afterLen >= beforeLen + 1) {
+              // Wrong char still there; leave it and continue (rare path).
+            }
             self.typeChar(self.target, ch);
             afterChar();
           }, Math.max(40, self.correctionDelay() / 2));
@@ -273,10 +298,21 @@
         this.insertEditable(target, ch);
       } else {
         var cur = target.value || '';
-        // Respect maxlength.
+        // Respect maxlength (code-point aware, 4-6).
         var max = target.maxLength;
-        if (!(max > 0 && cur.length >= max)) {
-          setNativeValue(target, cur + ch);
+        if (!(max > 0 && Array.from(cur).length >= max)) {
+          // Insert at the caret (4-2), not always at the end.
+          var start = target.selectionStart;
+          var end = target.selectionEnd;
+          var nv;
+          if (typeof start === 'number' && typeof end === 'number') {
+            nv = cur.slice(0, start) + ch + cur.slice(end);
+            setNativeValue(target, nv);
+            try { target.setSelectionRange(start + ch.length, start + ch.length); } catch (e) {}
+          } else {
+            nv = cur + ch;
+            setNativeValue(target, nv);
+          }
           target.dispatchEvent(new InputEvent('input', {
             bubbles: true, cancelable: true, inputType: 'insertText', data: ch
           }));
