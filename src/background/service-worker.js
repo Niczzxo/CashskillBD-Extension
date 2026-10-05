@@ -184,11 +184,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     // Network fetch on behalf of a tab: the service worker is not subject
     // to the page's Content-Security-Policy, so this succeeds where a
     // content-script fetch would be blocked (e.g. Taobao).
-    fetch(msg.url, { method: 'GET' })
+    fetch(msg.url, { method: 'GET', redirect: 'follow' })
       .then(async (res) => {
         var text = '';
         try { text = await res.text(); } catch (e) {}
-        sendResponse({ ok: res.ok, status: res.status, text: text });
+        sendResponse({ ok: res.ok, status: res.status, text: text, url: res.url || msg.url });
       })
       .catch((err) => sendResponse({ ok: false, error: String((err && err.message) || err) }));
     return true; // async response

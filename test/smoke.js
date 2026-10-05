@@ -175,7 +175,7 @@ t('overlay/modal accept pointer events (no click-through)',
 
 console.log('sidepanel architecture:');
 const manifest = JSON.parse(src('manifest.json'));
-t('manifest version 0.0.7', manifest.version === '0.0.7');
+t('manifest version 0.0.8', manifest.version === '0.0.8');
 t('debugger permission for pixel-perfect screenshots', manifest.permissions.includes('debugger'));
 t('sidePanel permission', manifest.permissions.includes('sidePanel'));
 t('side_panel default_path', manifest.side_panel && manifest.side_panel.default_path === 'src/sidepanel/panel.html');
@@ -317,8 +317,14 @@ t('update check only stamps lastCheck on success',
     return setIdx > fetchIdx && fetchIdx !== -1;
   })());
 t('update check has SW proxy fallback',
-  /fetchLatestRelease/.test(src('src/content/09-settings.js')) &&
+  /fetchJsonSmart/.test(src('src/content/09-settings.js')) &&
   /CSB_FETCH/.test(src('src/content/09-settings.js')));
+t('update check falls back to github.com redirect on API 403',
+  /followRedirectSmart/.test(src('src/content/09-settings.js')) &&
+  /releases\/latest/.test(src('src/content/09-settings.js')) &&
+  /releases\/tag/.test(src('src/content/09-settings.js')));
+t('SW proxy returns final URL for redirects',
+  /url: res\.url/.test(src('src/background/service-worker.js')));
 t('manual check shows specific error reason',
   /Could not check for updates' \+ reason/.test(src('src/content/09-settings.js')));
 t('update throttle is hourly, not daily',

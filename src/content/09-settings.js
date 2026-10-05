@@ -469,33 +469,66 @@
       } catch (e) {}
     },
 
-    /** Fetch the latest GitHub release. Tries a direct fetch first, then
-     * falls back to the service-worker proxy (different fetch context —
-     * helps when the page/panel context is network-restricted). Throws a
-     * specific, diagnosable error. */
+    /** Fetch the latest GitHub release. Strategies in order:
+     * 1) api.github.com (rich info: version + direct asset URL).
+     * 2) github.com/<repo>/releases/latest redirect — the final URL contains
+     *    the tag (…/releases/tag/vX.Y.Z). Works when the API is rate-limited
+     *    (403 on shared IPs) but github.com is reachable.
+     * Each strategy tries a direct fetch first, then the SW proxy.
+     * Returns {version, url, name}. Throws a specific error. */
     fetchLatestRelease: async function (repo) {
-      var url = 'https://api.github.com/repos/' + repo + '/releases/latest';
-      var lastErr = null;
+      var self = this;
+      // Strategy 1: API.
+      try {
+        var api = await self.fetchJsonSmart('https://api.github.com/repos/' + repo + '/releases/latest');
+        return {
+          version: String(api.tag_name || '').trim().replace(/^[vV]/, ''),
+          url: (api.assets && api.assets[0] && api.assets[0].browser_download_url) || api.html_url,
+          name: api.name || ''
+        };
+      } catch (e) { /* fall through to redirect strategy */ }
+      // Strategy 2: redirect.
+      var finalUrl = await self.followRedirectSmart('https://github.com/' + repo + '/releases/latest');
+      var m = /\/releases\/tag\/([^\/?#]+)/.exec(finalUrl || '');
+      if (!m) throw new Error('update check failed (API unreachable and redirect failed)');
+      var tag = m[1];
+      return {
+        version: tag.replace(/^[vV]/, ''),
+        url: 'https://github.com/' + repo + '/releases/tag/' + tag,
+        name: ''
+      };
+    },
+
+    /** GET JSON directly, else via the SW proxy. */
+    fetchJsonSmart: async function (url) {
       try {
         var res = await fetch(url);
         if (!res.ok) throw new Error('HTTP ' + res.status);
         return await res.json();
       } catch (e) {
-        lastErr = e;
-      }
-      // SW proxy fallback.
-      try {
         var sw = await new Promise(function (resolve) {
           try {
             chrome.runtime.sendMessage({ type: 'CSB_FETCH', url: url }, function (r) { resolve(r); });
           } catch (e2) { resolve(null); }
         });
         if (sw && sw.ok) return JSON.parse(sw.text);
-        lastErr = new Error('network unreachable' + (sw && (sw.error || sw.status) ? ' (' + (sw.error || sw.status) + ')' : ''));
-      } catch (e3) {
-        lastErr = e3;
+        throw new Error('network unreachable' + (sw && (sw.error || sw.status) ? ' (' + (sw.error || sw.status) + ')' : ''));
       }
-      throw lastErr || new Error('request failed');
+    },
+
+    /** Follow a redirecting URL (direct, else SW proxy) and return the final URL. */
+    followRedirectSmart: async function (url) {
+      try {
+        var res = await fetch(url, { redirect: 'follow' });
+        if (res.url) return res.url;
+      } catch (e) {}
+      var sw = await new Promise(function (resolve) {
+        try {
+          chrome.runtime.sendMessage({ type: 'CSB_FETCH', url: url }, function (r) { resolve(r); });
+        } catch (e2) { resolve(null); }
+      });
+      if (sw && sw.url) return sw.url;
+      throw new Error('redirect failed');
     },
 
     /** Silent check when the panel opens; pops up only for a new,
@@ -512,10 +545,10 @@
         var cur = chrome.runtime.getManifest().version;
         var rel = await this.fetchLatestRelease(repo);
         CSB.settings.set('updates.lastCheck', now);
-        var latest = String(rel.tag_name || '').trim().replace(/^[vV]/, '');
+        var latest = rel.version;
         if (!latest || compareVersions(latest, cur) <= 0) return;
         if (CSB.settings.get('updates.dismissed', '') === latest) return;
-        var url = (rel.assets && rel.assets[0] && rel.assets[0].browser_download_url) || rel.html_url;
+        var url = rel.url;
         this.modal('Update available',
           '<p>A newer version of CashSkillBD is available: <b>v' + U.esc(latest) + '</b> (you have v' + U.esc(cur) + ').</p>' +
           '<p><a href="' + U.esc(url) + '" target="_blank" rel="noopener">Download the update</a></p>' +
@@ -539,12 +572,11 @@
       this.modal('Check for updates', '<p>Checking <span class="csb-kbd">' + U.esc(repo) + '</span>…</p>');
       try {
         var rel = await this.fetchLatestRelease(repo);
-        var tag = String(rel.tag_name || '').trim();
-        var latest = tag.replace(/^[vV]/, '');
+        var latest = rel.version;
         var cmp = compareVersions(latest, cur);
         self.closeModals();
         if (cmp > 0) {
-          var url = (rel.assets && rel.assets[0] && rel.assets[0].browser_download_url) || rel.html_url;
+          var url = rel.url;
           self.modal('Update available',
             '<p>A newer version is available: <b>v' + U.esc(latest) + '</b> (you have v' + U.esc(cur) + ').</p>' +
             (rel.name ? '<p>' + U.esc(String(rel.name)).slice(0, 200) + '</p>' : '') +
@@ -554,7 +586,7 @@
         } else {
           self.modal('Check for updates',
             '<p>You are running <b>CashSkillBD v' + U.esc(cur) + '</b> — the latest release' +
-            (tag ? ' (<span class="csb-kbd">' + U.esc(tag) + '</span>)' : '') + '.</p>');
+            (latest ? ' (<span class="csb-kbd">v' + U.esc(latest) + '</span>)' : '') + '.</p>');
         }
       } catch (e) {
         self.closeModals();
