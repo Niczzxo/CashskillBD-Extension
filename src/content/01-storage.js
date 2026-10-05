@@ -66,7 +66,7 @@
       neverHosts: []
     },
     updates: {
-      repo: 'omarfaruque90/cashskillbd' // GitHub "username/repo" for "Check for updates"
+      repo: 'Niczzxo/CashskillBD-Extension' // GitHub "username/repo" for "Check for updates"
     },
     notifications: {
       typingCompleted: true,

@@ -253,7 +253,7 @@ t('shortcut settings button handles chrome:// block',
   /p\.catch\(done\)/.test(src('src/content/09-settings.js')));
 
 console.log('v1.0.22 check-for-updates:');
-t('updates.repo default set', CSB.settings.get('updates.repo', 'x') === 'omarfaruque90/cashskillbd');
+t('updates.repo default set', CSB.settings.get('updates.repo', 'x') === 'Niczzxo/CashskillBD-Extension');
 t('version compare works',
   CSB.compareVersions('1.0.22', '1.0.21') === 1 &&
   CSB.compareVersions('1.0.21', '1.0.21') === 0 &&
