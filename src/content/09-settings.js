@@ -340,7 +340,8 @@
       var name = U.el('div', '', '<div style="font-size:20px;font-weight:800">CashSkill<span style="color:var(--csb-accent)">BD</span></div>');
       var tag = U.el('div', 'csb-about-ver', 'Learn • Earn • Grow');
       var ver = U.el('div', 'csb-about-ver', 'Version ' + U.esc(chrome.runtime.getManifest().version));
-      wrap.appendChild(logo); wrap.appendChild(name); wrap.appendChild(tag); wrap.appendChild(ver);
+      var dev = U.el('div', 'csb-about-ver', 'Developed by RIYAZUL ISLAM');
+      wrap.appendChild(logo); wrap.appendChild(name); wrap.appendChild(tag); wrap.appendChild(ver); wrap.appendChild(dev);
       page.appendChild(wrap);
       page.appendChild(actionRow('Check for updates', 'Compare with the latest GitHub release.', 'CHECK', function () {
         CSB.settingsUI.checkForUpdates();
