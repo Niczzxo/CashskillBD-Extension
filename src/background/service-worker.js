@@ -1,0 +1,210 @@
+/* CashSkillBD — background service worker (Manifest V3)
+ *
+ * Responsibilities:
+ *  - Open Chrome's native side panel when the toolbar icon is clicked.
+ *  - Inject content scripts on demand for tabs that predate the install
+ *    (fresh pages get them automatically via manifest content_scripts).
+ *  - Route keyboard-shortcut commands (open the panel, then hand the
+ *    command to it; stop-typing goes straight to the tab).
+ *  - Capture the visible tab (used by screenshot stitching + OCR region).
+ *  - Load the OCR engine on demand (CSP-safe: scripting.executeScript files
+ *    are not subject to the page's content security policy).
+ *  - Show subtle notifications (only the kinds the user enabled in Settings).
+ */
+
+'use strict';
+
+const CONTENT_FILES = [
+  'src/content/00-util.js',
+  'src/content/01-storage.js',
+  'src/content/02-styles.js',
+  'src/content/13-tabhost.js',
+  'src/content/04-typing.js',
+  'src/content/06-translate.js',
+  'src/content/07-screenshot.js',
+  'src/content/08-ocr.js',
+  'src/content/11-page-translate.js',
+  'src/content/12-force-copy.js',
+  'src/content/10-content.js'
+];
+
+const TESSERACT_FILES = ['src/lib/tesseract/tesseract.min.js'];
+
+function notify(title, message) {
+  try {
+    chrome.notifications.create({
+      type: 'basic',
+      iconUrl: chrome.runtime.getURL('icons/icon-128.png'),
+      title: title || 'CashSkillBD',
+      message: message || ''
+    });
+  } catch (e) { /* notifications unavailable — never fatal */ }
+}
+
+// Clicking the toolbar icon opens the native side panel (Chrome handles it).
+try {
+  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(function () {});
+} catch (e) {}
+
+chrome.runtime.onInstalled.addListener(function () {
+  try {
+    chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(function () {});
+  } catch (e) {}
+});
+
+async function getActiveTab() {
+  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+  return tabs && tabs[0] ? tabs[0] : null;
+}
+
+/** Inject content scripts if needed. Returns true when the tab can talk to us. */
+async function ensureContent(tabId, quiet) {
+  try {
+    const res = await chrome.tabs.sendMessage(tabId, { type: 'CSB_PING' });
+    if (res && res.ok) return true;
+  } catch (e) { /* not injected yet */ }
+  try {
+    await chrome.scripting.executeScript({ target: { tabId }, files: CONTENT_FILES });
+    return true;
+  } catch (e) {
+    if (!quiet) {
+      notify(
+        'CashSkillBD',
+        'CashSkillBD cannot run on this page (for example chrome:// pages, the Chrome Web Store, or other restricted pages).'
+      );
+    }
+    return false;
+  }
+}
+
+/** Load the OCR engine file into the tab (lazy, only when OCR is first used). */
+async function ensureTesseract(tabId) {
+  try {
+    const res = await chrome.tabs.sendMessage(tabId, { type: 'CSB_TESS_PING' });
+    if (res && res.ok) return true;
+  } catch (e) { /* engine not loaded yet */ }
+  try {
+    await chrome.scripting.executeScript({ target: { tabId }, files: TESSERACT_FILES });
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+/** Pixel-perfect full-page capture via the debugger (no scroll stitching).
+ * Returns a data URL, or throws when the debugger cannot be used. */
+async function debugCaptureFullPage(tabId, format, quality) {
+  const target = { tabId };
+  await chrome.debugger.attach(target, '1.3');
+  try {
+    const params = { captureBeyondViewport: true, format: format === 'jpeg' ? 'jpeg' : 'png' };
+    if (params.format === 'jpeg' && quality) params.quality = quality;
+    const res = await chrome.debugger.sendCommand(target, 'Page.captureScreenshot', params);
+    if (!res || !res.data) throw new Error('capture failed');
+    return 'data:image/' + params.format + ';base64,' + res.data;
+  } finally {
+    try { await chrome.debugger.detach(target); } catch (e) {}
+  }
+}
+
+/** Open the native side panel for the active tab. */
+async function openSidePanel(tabId) {
+  try {
+    await chrome.sidePanel.open({ tabId });
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+// Fallback: if the panel behavior ever fails to fire, open it ourselves.
+chrome.action.onClicked.addListener(async () => {
+  const tab = await getActiveTab();
+  if (!tab || tab.id == null) return;
+  await openSidePanel(tab.id);
+});
+
+// Keyboard shortcuts. Commands that need the panel UI are stashed in
+// session storage so the panel picks them up race-free on boot;
+// stop-typing goes straight to the tab's engine (no panel popup needed).
+chrome.commands.onCommand.addListener(async (command) => {
+  const tab = await getActiveTab();
+  if (!tab || tab.id == null) return;
+  if (!(await ensureContent(tab.id, true))) return;
+  if (command === 'stop-typing') {
+    try { await chrome.tabs.sendMessage(tab.id, { type: 'CSB_BUS', cmd: 'typing.stop', args: {} }); } catch (e) {}
+    return;
+  }
+  if (command === 'open-panel' || command === 'start-typing' ||
+      command === 'take-screenshot' || command === 'text-select') {
+    try { await chrome.storage.session.set({ csb_pending_cmd: command }); } catch (e) {}
+    await openSidePanel(tab.id);
+  }
+});
+
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (!msg || typeof msg.type !== 'string') return false;
+
+  if (msg.type === 'CSB_CAPTURE_VISIBLE') {
+    const windowId = sender.tab ? sender.tab.windowId : undefined;
+    chrome.tabs.captureVisibleTab(windowId, { format: 'png' }).then(
+      (dataUrl) => sendResponse({ ok: true, dataUrl }),
+      (err) => sendResponse({ ok: false, error: String((err && err.message) || err) })
+    );
+    return true; // async response
+  }
+
+  if (msg.type === 'CSB_FETCH') {
+    // Network fetch on behalf of a tab: the service worker is not subject
+    // to the page's Content-Security-Policy, so this succeeds where a
+    // content-script fetch would be blocked (e.g. Taobao).
+    fetch(msg.url, { method: 'GET' })
+      .then(async (res) => {
+        var text = '';
+        try { text = await res.text(); } catch (e) {}
+        sendResponse({ ok: res.ok, status: res.status, text: text });
+      })
+      .catch((err) => sendResponse({ ok: false, error: String((err && err.message) || err) }));
+    return true; // async response
+  }
+
+  if (msg.type === 'CSB_DEBUG_CAPTURE') {
+    const tabId = sender.tab && sender.tab.id;
+    if (tabId == null) { sendResponse({ ok: false, error: 'no tab' }); return false; }
+    debugCaptureFullPage(tabId, msg.format, msg.quality).then(
+      (dataUrl) => sendResponse({ ok: true, dataUrl }),
+      (err) => sendResponse({ ok: false, error: String((err && err.message) || err) })
+    );
+    return true; // async response
+  }
+
+  if (msg.type === 'CSB_LOAD_TESSERACT') {
+    const tabId = sender.tab && sender.tab.id;
+    if (tabId == null) { sendResponse({ ok: false, error: 'no tab' }); return false; }
+    ensureTesseract(tabId).then(
+      (ok) => sendResponse({ ok }),
+      (err) => sendResponse({ ok: false, error: String((err && err.message) || err) })
+    );
+    return true; // async response
+  }
+
+  if (msg.type === 'CSB_NOTIFY') {
+    notify(msg.title || 'CashSkillBD', msg.message || '');
+    sendResponse({ ok: true });
+    return false;
+  }
+
+  if (msg.type === 'CSB_ENSURE_CONTENT') {
+    // The side panel asks us to (re)inject into a stale tab
+    // (opened before install/update), then it retries its command.
+    const tabId = msg.tabId;
+    if (tabId == null) { sendResponse({ ok: false }); return false; }
+    ensureContent(tabId, true).then(
+      (ok) => sendResponse({ ok: !!ok }),
+      () => sendResponse({ ok: false })
+    );
+    return true; // async response
+  }
+
+  return false;
+});

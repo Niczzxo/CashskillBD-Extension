@@ -1,0 +1,104 @@
+{
+  "action": {
+    "default_icon": {
+      "128": "icons/icon-128.png",
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png"
+    },
+    "default_title": "Open CashSkillBD"
+  },
+  "background": {
+    "service_worker": "src/background/service-worker.js"
+  },
+  "commands": {
+    "open-panel": {
+      "description": "Open CashSkillBD panel",
+      "suggested_key": {
+        "default": "Ctrl+Shift+C"
+      }
+    },
+    "start-typing": {
+      "description": "Start auto typing",
+      "suggested_key": {
+        "default": "Ctrl+Shift+S"
+      }
+    },
+    "stop-typing": {
+      "description": "Stop auto typing",
+      "suggested_key": {
+        "default": "Ctrl+Shift+X"
+      }
+    },
+    "take-screenshot": {
+      "description": "Capture full-page screenshot",
+      "suggested_key": {
+        "default": "Ctrl+Shift+P"
+      }
+    },
+    "text-select": {
+      "description": "Start screen text selection (OCR)"
+    }
+  },
+  "description": "Learn \u2022 Earn \u2022 Grow \u2014 Human-like auto typing, auto language detection + English translation, full-page screenshot, and screen text select with OCR.",
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "src/content/00-util.js",
+        "src/content/01-storage.js",
+        "src/content/02-styles.js",
+        "src/content/13-tabhost.js",
+        "src/content/04-typing.js",
+        "src/content/06-translate.js",
+        "src/content/07-screenshot.js",
+        "src/content/08-ocr.js",
+        "src/content/11-page-translate.js",
+        "src/content/12-force-copy.js",
+        "src/content/10-content.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "host_permissions": [
+    "<all_urls>",
+    "https://translate.googleapis.com/*"
+  ],
+  "icons": {
+    "128": "icons/icon-128.png",
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png"
+  },
+  "manifest_version": 3,
+  "name": "CashSkillBD",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "notifications",
+    "clipboardWrite",
+    "sidePanel",
+    "debugger"
+  ],
+  "short_name": "CashSkill",
+  "version": "0.0.1",
+  "web_accessible_resources": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "resources": [
+        "src/lib/tesseract/*",
+        "src/lib/tesseract/lang/*",
+        "icons/*"
+      ]
+    }
+  ],
+  "side_panel": {
+    "default_path": "src/sidepanel/panel.html"
+  }
+}
