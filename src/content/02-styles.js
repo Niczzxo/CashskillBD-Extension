@@ -418,6 +418,8 @@ CSB.CSS = `
   box-shadow: 0 6px 20px rgba(0,0,0,.35), 0 0 0 1px var(--csb-border-hi);
 }
 .csb-about-ver { font-size: 12px; color: var(--csb-fg-faint); font-weight: 600; letter-spacing: .3px; }
+.csb-about-dev { font-size: 13px; color: var(--csb-fg); font-weight: 700; letter-spacing: .3px; margin-top: 6px; }
+.csb-about-dev span { color: var(--csb-accent); }
 .csb-modal-back {
   position: fixed; inset: 0; background: rgba(4,4,8,.62); z-index: 2147483647;
   display: flex; align-items: center; justify-content: center; padding: 20px;
