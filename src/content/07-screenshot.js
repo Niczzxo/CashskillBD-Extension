@@ -259,10 +259,14 @@
 
     debugCapture: function (opts) {
       var self = this;
+      // Send page dimensions for the Emulation strategy (SW resizes viewport
+      // to full page, making duplication structurally impossible).
+      var fullW = Math.max(document.documentElement.scrollWidth, document.body ? document.body.scrollWidth : 0, window.innerWidth);
+      var fullH = Math.max(document.documentElement.scrollHeight, document.body ? document.body.scrollHeight : 0, window.innerHeight);
       return new Promise(function (resolve) {
         try {
           chrome.runtime.sendMessage(
-            { type: 'CSB_DEBUG_CAPTURE', format: opts.format, quality: opts.quality },
+            { type: 'CSB_DEBUG_CAPTURE', format: opts.format, quality: opts.quality, fullW: fullW, fullH: fullH },
             function (res) {
               if (res && res.ok) resolve(res.dataUrl);
               else {

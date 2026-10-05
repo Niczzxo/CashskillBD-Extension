@@ -93,17 +93,46 @@ async function ensureTesseract(tabId) {
 
 /** Pixel-perfect full-page capture via the debugger (no scroll stitching).
  * Returns a data URL, or throws when the debugger cannot be used. */
-async function debugCaptureFullPage(tabId, format, quality) {
+async function debugCaptureFullPage(tabId, format, quality, fullW, fullH) {
   const target = { tabId };
   await chrome.debugger.attach(target, '1.3');
   try {
+    // Strategy 1: Emulation — resize the viewport to the full page dimensions,
+    // then capture the viewport. No captureBeyondViewport, no scrolling,
+    // no stitching — duplication is structurally impossible.
+    if (fullW && fullH && fullH <= 16000) {
+      try {
+        await chrome.debugger.sendCommand(target, 'Emulation.setDeviceMetricsOverride', {
+          width: Math.round(fullW),
+          height: Math.round(fullH),
+          deviceScaleFactor: 1,
+          mobile: false
+        });
+        // Give the page a moment to re-layout at the new viewport size.
+        await new Promise(r => setTimeout(r, 400));
+        const params = { format: format === 'jpeg' ? 'jpeg' : 'png' };
+        if (params.format === 'jpeg' && quality) params.quality = quality;
+        const res = await chrome.debugger.sendCommand(target, 'Page.captureScreenshot', params);
+        await chrome.debugger.sendCommand(target, 'Emulation.clearDeviceMetricsOverride').catch(() => {});
+        if (res && res.data) {
+          return 'data:image/' + params.format + ';base64,' + res.data;
+        }
+        // Emulation capture failed — fall through to captureBeyondViewport.
+      } catch (e) {
+        try { await chrome.debugger.sendCommand(target, 'Emulation.clearDeviceMetricsOverride').catch(() => {}); } catch (e2) {}
+      }
+    }
+    // Strategy 2: captureBeyondViewport (Chrome native full-page).
     const params = { captureBeyondViewport: true, format: format === 'jpeg' ? 'jpeg' : 'png' };
     if (params.format === 'jpeg' && quality) params.quality = quality;
     const res = await chrome.debugger.sendCommand(target, 'Page.captureScreenshot', params);
     if (!res || !res.data) throw new Error('capture failed');
     return 'data:image/' + params.format + ';base64,' + res.data;
   } finally {
-    try { await chrome.debugger.detach(target); } catch (e) {}
+    try {
+      await chrome.debugger.sendCommand(target, 'Emulation.clearDeviceMetricsOverride').catch(() => {});
+      await chrome.debugger.detach(target);
+    } catch (e) {}
   }
 }
 
@@ -200,7 +229,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'CSB_DEBUG_CAPTURE') {
     const tabId = sender.tab && sender.tab.id;
     if (tabId == null) { sendResponse({ ok: false, error: 'no tab' }); return false; }
-    debugCaptureFullPage(tabId, msg.format, msg.quality).then(
+    debugCaptureFullPage(tabId, msg.format, msg.quality, msg.fullW, msg.fullH).then(
       (dataUrl) => sendResponse({ ok: true, dataUrl }),
       (err) => sendResponse({ ok: false, error: String((err && err.message) || err) })
     );
