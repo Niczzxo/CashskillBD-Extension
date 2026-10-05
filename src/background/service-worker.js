@@ -107,6 +107,32 @@ async function debugCaptureFullPage(tabId, format, quality) {
   }
 }
 
+/** Section captures for very tall pages: each clip is captured directly via
+ * the debugger WITHOUT scrolling, so tiles can never repeat or tear.
+ * sections = [{x, y, w, h}] in CSS pixels. Returns dataUrl array. */
+async function debugCaptureSections(tabId, sections, format, quality) {
+  const target = { tabId };
+  await chrome.debugger.attach(target, '1.3');
+  try {
+    const out = [];
+    const fmt = format === 'jpeg' ? 'jpeg' : 'png';
+    for (const s of sections) {
+      const params = {
+        captureBeyondViewport: true,
+        format: fmt,
+        clip: { x: s.x, y: s.y, width: s.w, height: s.h, scale: 1 }
+      };
+      if (fmt === 'jpeg' && quality) params.quality = quality;
+      const res = await chrome.debugger.sendCommand(target, 'Page.captureScreenshot', params);
+      if (!res || !res.data) throw new Error('section capture failed');
+      out.push('data:image/' + fmt + ';base64,' + res.data);
+    }
+    return out;
+  } finally {
+    try { await chrome.debugger.detach(target); } catch (e) {}
+  }
+}
+
 /** Open the native side panel for the active tab. */
 async function openSidePanel(tabId) {
   try {
@@ -173,6 +199,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (tabId == null) { sendResponse({ ok: false, error: 'no tab' }); return false; }
     debugCaptureFullPage(tabId, msg.format, msg.quality).then(
       (dataUrl) => sendResponse({ ok: true, dataUrl }),
+      (err) => sendResponse({ ok: false, error: String((err && err.message) || err) })
+    );
+    return true; // async response
+  }
+
+  if (msg.type === 'CSB_DEBUG_CAPTURE_SECTIONS') {
+    const tabId = sender.tab && sender.tab.id;
+    if (tabId == null || !Array.isArray(msg.sections) || !msg.sections.length) {
+      sendResponse({ ok: false, error: 'bad sections' }); return false;
+    }
+    debugCaptureSections(tabId, msg.sections, msg.format, msg.quality).then(
+      (dataUrls) => sendResponse({ ok: true, dataUrls }),
       (err) => sendResponse({ ok: false, error: String((err && err.message) || err) })
     );
     return true; // async response

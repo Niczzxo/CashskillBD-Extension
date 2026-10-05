@@ -175,7 +175,7 @@ t('overlay/modal accept pointer events (no click-through)',
 
 console.log('sidepanel architecture:');
 const manifest = JSON.parse(src('manifest.json'));
-t('manifest version 0.0.2', manifest.version === '0.0.2');
+t('manifest version 0.0.4', manifest.version === '0.0.4');
 t('debugger permission for pixel-perfect screenshots', manifest.permissions.includes('debugger'));
 t('sidePanel permission', manifest.permissions.includes('sidePanel'));
 t('side_panel default_path', manifest.side_panel && manifest.side_panel.default_path === 'src/sidepanel/panel.html');
@@ -293,6 +293,30 @@ t('MyMemory uses 400-char chunks',
   /chunkText\(text, 400\)/.test(src('src/content/06-translate.js')));
 t('MyMemory detects daily-limit warning',
   /MYMEMORY WARNING/.test(src('src/content/06-translate.js')));
+
+console.log('v0.0.4 typing/screenshot/update fixes:');
+t('contenteditable typing uses execCommand (beforeinput pipeline)',
+  /document\.execCommand\('insertText', false, text\)/.test(src('src/content/04-typing.js')) &&
+  /insertEditable: function[\s\S]*?execCommand/.test(src('src/content/04-typing.js')));
+t('contenteditable backspace uses execCommand delete',
+  /document\.execCommand\('delete', false, null\)/.test(src('src/content/04-typing.js')));
+t('debugger section capture for tall pages',
+  /CSB_DEBUG_CAPTURE_SECTIONS/.test(src('src/content/07-screenshot.js')) &&
+  /debugCaptureSections/.test(src('src/background/service-worker.js')));
+t('SW handles CSB_DEBUG_CAPTURE_SECTIONS',
+  /CSB_DEBUG_CAPTURE_SECTIONS/.test(src('src/background/service-worker.js')));
+t('stitch fallback aborts when page will not scroll',
+  /blocks programmatic scrolling/.test(src('src/content/07-screenshot.js')));
+t('update check only stamps lastCheck on success',
+  (function () {
+    var s = src('src/content/09-settings.js');
+    var body = s.split('autoCheck: async function')[1].split('checkForUpdates: async function')[0];
+    var setIdx = body.indexOf("updates.lastCheck', now)");
+    var okIdx = body.indexOf('if (!res.ok) return;');
+    return setIdx > okIdx && okIdx !== -1;
+  })());
+t('update throttle is hourly, not daily',
+  /now - last < 3600 \* 1000/.test(src('src/content/09-settings.js')));
 
 (async function () {
   // Functional: primary provider fails -> backup is used automatically.

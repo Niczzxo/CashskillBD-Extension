@@ -307,51 +307,73 @@
 
     insertEditable: function (ed, text) {
       try { ed.focus(); } catch (e) {}
-      var sel = window.getSelection();
+      // Make sure the caret is inside the editable; execCommand inserts
+      // at the current selection.
       try {
-        if (!sel.rangeCount) {
+        var sel = window.getSelection();
+        var ok = false;
+        try { ok = !!(sel.rangeCount && ed.contains(sel.getRangeAt(0).commonAncestorContainer)); } catch (e0) {}
+        if (!ok) {
           var r = document.createRange();
           r.selectNodeContents(ed);
           r.collapse(false);
           sel.removeAllRanges();
           sel.addRange(r);
         }
-        var range = sel.getRangeAt(0);
-        range.deleteContents();
-        var node = document.createTextNode(text);
-        range.insertNode(node);
-        range.setStartAfter(node);
-        range.collapse(true);
-        sel.removeAllRanges();
-        sel.addRange(range);
-      } catch (e) {
-        try { document.execCommand('insertText', false, text); } catch (e2) {}
+      } catch (e) {}
+      // Use the browser's native editing action. Unlike direct DOM
+      // insertion, execCommand fires beforeinput/input through the proper
+      // pipeline, so controlled editors (Facebook/Lexical, Draft.js, Gmail,
+      // Notion, etc.) register the change instead of wiping it on re-render.
+      var done = false;
+      try { done = document.execCommand('insertText', false, text); } catch (e2) {}
+      if (!done) {
+        // Manual fallback for exotic editables.
+        try {
+          var sel2 = window.getSelection();
+          var range = sel2.getRangeAt(0);
+          range.deleteContents();
+          var node = document.createTextNode(text);
+          range.insertNode(node);
+          range.setStartAfter(node);
+          range.collapse(true);
+          sel2.removeAllRanges();
+          sel2.addRange(range);
+        } catch (e3) {
+          try { document.execCommand('insertText', false, text); } catch (e4) {}
+        }
+        ed.dispatchEvent(new InputEvent('input', {
+          bubbles: true, cancelable: true, composed: true,
+          inputType: 'insertText', data: text
+        }));
       }
-      ed.dispatchEvent(new InputEvent('input', {
-        bubbles: true, cancelable: true, inputType: 'insertText', data: text
-      }));
     },
 
     backspace: function (target) {
       target.dispatchEvent(keyEvent('keydown', 'Backspace', 'Backspace'));
       if (target.isContentEditable) {
-        try {
-          var sel = window.getSelection();
-          if (sel.rangeCount) {
-            var range = sel.getRangeAt(0);
-            if (range.collapsed && range.startOffset > 0) {
-              range.setStart(range.startContainer, range.startOffset - 1);
+        // Native delete fires beforeinput (deleteContentBackward) so
+        // controlled editors stay in sync.
+        var done = false;
+        try { done = document.execCommand('delete', false, null); } catch (e) {}
+        if (!done) {
+          try {
+            var sel = window.getSelection();
+            if (sel.rangeCount) {
+              var range = sel.getRangeAt(0);
+              if (range.collapsed && range.startOffset > 0) {
+                range.setStart(range.startContainer, range.startOffset - 1);
+              }
+              range.deleteContents();
+              sel.removeAllRanges();
+              sel.addRange(range);
             }
-            range.deleteContents();
-            sel.removeAllRanges();
-            sel.addRange(range);
-          }
-        } catch (e) {
-          try { document.execCommand('delete', false, null); } catch (e2) {}
+          } catch (e2) {}
+          target.dispatchEvent(new InputEvent('input', {
+            bubbles: true, cancelable: true, composed: true,
+            inputType: 'deleteContentBackward', data: null
+          }));
         }
-        target.dispatchEvent(new InputEvent('input', {
-          bubbles: true, cancelable: true, inputType: 'deleteContentBackward', data: null
-        }));
       } else {
         var cur = target.value || '';
         setNativeValue(target, cur.slice(0, -1));

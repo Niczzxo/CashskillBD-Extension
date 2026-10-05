@@ -130,11 +130,12 @@
       };
 
       try {
-        // 1) Pixel-perfect debugger capture first (no stitching glitches).
+        // 1) Pixel-perfect debugger capture first (no scrolling, no glitches).
         var dbg = await this.debuggerShot();
         if (dbg) {
           this.canvas = dbg.canvas;
           this.dataUrl = dbg.dataUrl;
+          this.captureMethod = dbg.method || 'debugger';
           finishOk(dbg.w, dbg.h);
           return;
         }
@@ -142,6 +143,7 @@
         var st = await this.stitchShot();
         this.canvas = st.canvas;
         this.dataUrl = st.dataUrl;
+        this.captureMethod = 'stitch';
         finishOk(st.w, st.h);
       } catch (e) {
         this.state = 'ERROR';
@@ -155,28 +157,82 @@
       }
     },
 
-    /** Full-page capture via the debugger: one pixel-perfect shot, no scrolling.
-     * Returns {canvas, dataUrl, w, h}, or null when the debugger is unavailable. */
+    /** Full-page capture via the debugger: pixel-perfect, no scrolling.
+     * Normal pages: one shot with captureBeyondViewport.
+     * Very tall pages (>14k px, beyond the single-shot limit): section
+     * captures via clip (still no scrolling — tiles can never repeat/tear),
+     * stitched on a canvas here.
+     * Returns {canvas, dataUrl, w, h, method}, or null when unavailable. */
     debuggerShot: async function () {
       var format = CSB.settings.get('screenshot.format', 'png');
       var jpeg = format === 'jpg';
       var quality = CSB.settings.get('screenshot.quality', 'high') === 'high' ? 92 : 80;
-      var dataUrl = await new Promise(function (resolve) {
+      var fullW = Math.max(document.documentElement.scrollWidth, window.innerWidth);
+      var fullH = Math.max(document.documentElement.scrollHeight, window.innerHeight);
+      var hideCtx = this.hideFixed();
+      try {
+        if (fullH <= 14000) {
+          var dataUrl = await this.debugCapture({ format: jpeg ? 'jpeg' : 'png', quality: quality });
+          if (!dataUrl) return null;
+          var img = await U.loadImage(dataUrl);
+          var canvas = document.createElement('canvas');
+          canvas.width = img.width;
+          canvas.height = img.height;
+          canvas.getContext('2d').drawImage(img, 0, 0);
+          return { canvas: canvas, dataUrl: dataUrl, w: img.width, h: img.height, method: 'debugger' };
+        }
+        // Tall page: capture viewport-height sections, stitch them.
+        var vh = window.innerHeight;
+        var sections = [];
+        for (var y = 0; y < fullH; y += vh) {
+          sections.push({ x: 0, y: y, w: fullW, h: Math.min(vh, fullH - y) });
+        }
+        var dataUrls = await this.debugCaptureSections(sections, jpeg ? 'jpeg' : 'png', quality);
+        if (!dataUrls || !dataUrls.length) return null;
+        var dpr = window.devicePixelRatio || 1;
+        var canvas2 = document.createElement('canvas');
+        canvas2.width = Math.round(fullW * dpr);
+        canvas2.height = Math.round(fullH * dpr);
+        var ctx = canvas2.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas2.width, canvas2.height);
+        for (var i = 0; i < dataUrls.length; i++) {
+          var simg = await U.loadImage(dataUrls[i]);
+          var sy = Math.round(sections[i].y * dpr);
+          var dw = canvas2.width;
+          var dh = Math.round(simg.height * (dw / simg.width));
+          ctx.drawImage(simg, 0, sy, dw, dh);
+          this.setStatus('busy', 'Capturing full page… ' + Math.round(((i + 1) / dataUrls.length) * 100) + '%');
+        }
+        var mime = jpeg ? 'image/jpeg' : 'image/png';
+        return {
+          canvas: canvas2,
+          dataUrl: canvas2.toDataURL(mime, jpeg ? quality / 100 : undefined),
+          w: canvas2.width, h: canvas2.height, method: 'debugger-sections'
+        };
+      } finally {
+        this.unhideFixed(hideCtx);
+      }
+    },
+
+    debugCapture: function (opts) {
+      return new Promise(function (resolve) {
         try {
           chrome.runtime.sendMessage(
-            { type: 'CSB_DEBUG_CAPTURE', format: jpeg ? 'jpeg' : 'png', quality: quality },
-            function (res) {
-              resolve(res && res.ok ? res.dataUrl : null);
-            });
+            { type: 'CSB_DEBUG_CAPTURE', format: opts.format, quality: opts.quality },
+            function (res) { resolve(res && res.ok ? res.dataUrl : null); });
         } catch (e) { resolve(null); }
       });
-      if (!dataUrl) return null;
-      var img = await U.loadImage(dataUrl);
-      var canvas = document.createElement('canvas');
-      canvas.width = img.width;
-      canvas.height = img.height;
-      canvas.getContext('2d').drawImage(img, 0, 0);
-      return { canvas: canvas, dataUrl: dataUrl, w: img.width, h: img.height };
+    },
+
+    debugCaptureSections: function (sections, format, quality) {
+      return new Promise(function (resolve) {
+        try {
+          chrome.runtime.sendMessage(
+            { type: 'CSB_DEBUG_CAPTURE_SECTIONS', sections: sections, format: format, quality: quality },
+            function (res) { resolve(res && res.ok ? res.dataUrls : null); });
+        } catch (e) { resolve(null); }
+      });
     },
 
     /** Legacy scroll-stitch capture (fallback when the debugger is unavailable). */
@@ -204,10 +260,22 @@
         ctx2d.fillRect(0, 0, canvas.width, canvas.height);
 
         var steps = Math.max(1, Math.ceil(fullH / vh));
+        var stuckCount = 0;
         for (var i = 0; i < steps; i++) {
           var y = Math.min(i * vh, fullH - vh);
           window.scrollTo(origX, y);
           await U.sleep(280); // let lazy content settle
+          // If the page refuses to scroll (custom scroller / overflow lock),
+          // we'd capture the same viewport repeatedly — abort instead of
+          // producing a broken image with duplicated sections.
+          if (Math.abs(window.scrollY - y) > 2) {
+            stuckCount++;
+            if (stuckCount >= 2) {
+              throw new Error('This page blocks programmatic scrolling, so a stitched full-page capture is not possible here.');
+            }
+          } else {
+            stuckCount = 0;
+          }
           var shot = await this.captureVisibleThrottled();
           var img = await U.loadImage(shot);
           var dw = Math.round(vw * scale), dh = Math.round(vh * scale);

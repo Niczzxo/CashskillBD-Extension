@@ -470,19 +470,21 @@
     },
 
     /** Silent check when the panel opens; pops up only for a new,
-     * undismissed update (throttled to once a day). */
+     * undismissed update. Throttled to once an hour; the timestamp is only
+     * saved after a SUCCESSFUL check, so a failed check (offline / API
+     * hiccup) retries on the next panel open instead of blacking out. */
     autoCheck: async function () {
       try {
         var now = Date.now();
         var last = CSB.settings.get('updates.lastCheck', 0) || 0;
-        if (now - last < 24 * 3600 * 1000) return;
-        CSB.settings.set('updates.lastCheck', now);
+        if (now - last < 3600 * 1000) return;
         var repo = String(CSB.settings.get('updates.repo', '') || '').trim();
         if (!repo || repo.split('/').length !== 2) return;
         var cur = chrome.runtime.getManifest().version;
         var res = await fetch('https://api.github.com/repos/' + repo + '/releases/latest');
         if (!res.ok) return;
         var rel = await res.json();
+        CSB.settings.set('updates.lastCheck', now);
         var latest = String(rel.tag_name || '').trim().replace(/^[vV]/, '');
         if (!latest || compareVersions(latest, cur) <= 0) return;
         if (CSB.settings.get('updates.dismissed', '') === latest) return;
