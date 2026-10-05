@@ -125,6 +125,7 @@ CSB.CSS = `
   white-space: nowrap;
   background: linear-gradient(120deg, var(--csb-fg) 60%, var(--csb-fg-dim));
   -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
 }
 .csb-brand-name .csb-bd {
   background: var(--csb-accent-grad);

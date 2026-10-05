@@ -69,7 +69,20 @@
     minimize: function () {},
     unminimize: function () {},
     shiftPage: function () {},
-    applySettings: function () {},
+    applySettings: function () {
+      // In-tab overlays (translate bar, OCR hints) must follow theme changes.
+      try {
+        if (this.host) {
+          var r = this.host.shadowRoot ? this.host.shadowRoot.querySelector('.csb-root') : null;
+          if (r) r.setAttribute('data-theme', CSB.settings.effectiveTheme());
+        }
+        var pt = document.getElementById('cashskillbd-pt-host');
+        if (pt && pt.shadowRoot) {
+          var pr = pt.shadowRoot.querySelector('.csb-root');
+          if (pr) pr.setAttribute('data-theme', CSB.settings.effectiveTheme());
+        }
+      } catch (e) {}
+    },
     switchTab: function () {},
     hideMinButton: function () {},
     showMinButton: function () {}

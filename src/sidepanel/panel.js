@@ -15,9 +15,9 @@
   var css = document.createElement('style');
   css.textContent = (CSB.CSS || '') +
     '\nhtml,body{margin:0;padding:0;height:100%;}' +
-    '\nbody{background:#101010;overflow:hidden;}' +
-    '\n#csb-sp-root.csb-root{display:flex;flex-direction:column;height:100vh;width:100%;overflow:hidden;container-type:inline-size;}' +
-    '\n.csb-sp-body{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;}' +
+    '\nbody{overflow:hidden;background:var(--csb-bg, #0c0c11);}' +
+    '\n#csb-sp-root.csb-root{display:flex;flex-direction:column;height:100vh;width:100%;overflow:hidden;container-type:inline-size;background:var(--csb-bg);color:var(--csb-fg);}' +
+    '\n.csb-sp-body{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;background:var(--csb-bg);}' +
     '\n.csb-sp-body .csb-pane{display:none;}' +
     '\n.csb-sp-body .csb-pane.csb-active{display:block;animation:csbFadeUp .25s ease;}' +
     '\n@keyframes csbFadeUp{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}';
@@ -40,7 +40,11 @@
   }
 
   function applyTheme() {
-    try { root.setAttribute('data-theme', CSB.settings.effectiveTheme()); } catch (e) {}
+    var theme = 'dark';
+    try { theme = CSB.settings.effectiveTheme(); } catch (e) {}
+    try { root.setAttribute('data-theme', theme); } catch (e) {}
+    // body is outside .csb-root so CSS vars don't reach it — set directly.
+    try { document.body.style.background = theme === 'light' ? '#fafafc' : '#0c0c11'; } catch (e) {}
     var accent = CSB.settings.get('appearance.accent', 'red');
     var raw = accent === 'custom' ? CSB.settings.get('appearance.customAccent', '#D7263D') : '#D7263D';
     // Only 6-digit hex can take an appended alpha (P-5); anything else falls
