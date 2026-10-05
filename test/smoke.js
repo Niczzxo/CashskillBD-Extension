@@ -175,7 +175,7 @@ t('overlay/modal accept pointer events (no click-through)',
 
 console.log('sidepanel architecture:');
 const manifest = JSON.parse(src('manifest.json'));
-t('manifest version 0.1.2', manifest.version === '0.1.2');
+t('manifest version 0.1.3', manifest.version === '0.1.3');
 t('debugger permission for pixel-perfect screenshots', manifest.permissions.includes('debugger'));
 t('sidePanel permission', manifest.permissions.includes('sidePanel'));
 t('side_panel default_path', manifest.side_panel && manifest.side_panel.default_path === 'src/sidepanel/panel.html');
@@ -301,11 +301,11 @@ t('contenteditable typing uses execCommand (beforeinput pipeline)',
   /insertEditable: function[\s\S]*?execCommand/.test(src('src/content/04-typing.js')));
 t('contenteditable backspace uses execCommand delete',
   /document\.execCommand\('delete', false, null\)/.test(src('src/content/04-typing.js')));
-t('debugger section capture for tall pages',
-  /CSB_DEBUG_CAPTURE_SECTIONS/.test(src('src/content/07-screenshot.js')) &&
-  /debugCaptureSections/.test(src('src/background/service-worker.js')));
-t('SW handles CSB_DEBUG_CAPTURE_SECTIONS',
-  /CSB_DEBUG_CAPTURE_SECTIONS/.test(src('src/background/service-worker.js')));
+t('debugger uses single full-page shot (no unreliable clip sections)',
+  /captureBeyondViewport: true/.test(src('src/background/service-worker.js')) &&
+  !/CSB_DEBUG_CAPTURE_SECTIONS/.test(src('src/content/07-screenshot.js')));
+t('no clip-based section capture in SW',
+  !/debugCaptureSections/.test(src('src/background/service-worker.js')));
 t('stitch fallback aborts when page will not scroll',
   /Unable to scroll the page correctly for full-page capture/.test(src('src/content/07-screenshot.js')));
 t('update check only stamps lastCheck on success',
@@ -402,8 +402,8 @@ t('input type allowlist (4-5)',
   /text: 1, search: 1/.test(src('src/content/04-typing.js')));
 t('unhideFixed removes sheet by identity (7-2)',
   /s !== ctx\.sheet/.test(src('src/content/07-screenshot.js')));
-t('section height from true height (7-3)',
-  /sections\[i\]\.h \* dpr/.test(src('src/content/07-screenshot.js')));
+// 7-3 obsolete: clip-based sections removed (unreliable); single debugger
+// shot + verified stitch cover all pages now.
 t('filename template global replace (7-6)',
   /split\('\[DATE\]'\)/.test(src('src/content/07-screenshot.js')));
 t('OCR recognize has timeout (8-1)',
@@ -440,8 +440,8 @@ t('final partial section handled (req #7)',
   /finalY = Math\.max\(0, fullH - vh\)/.test(src('src/content/07-screenshot.js')));
 t('final image validated (req #20)',
   /maxCovered/.test(src('src/content/07-screenshot.js')));
-t('debugger sections use page DPR (req #10)',
-  /msg\.dpr/.test(src('src/background/service-worker.js')) && /scale: scale/.test(src('src/background/service-worker.js')));
+// req #10 obsolete for sections: single debugger shot needs no clip scale;
+// stitch path handles DPR via scale = dpr * qualityScale.
 t('manual check shows specific error reason',
   /Could not check for updates' \+ reason/.test(src('src/content/09-settings.js')));
 t('update throttle is hourly, not daily',

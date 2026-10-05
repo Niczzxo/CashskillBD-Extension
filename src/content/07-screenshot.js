@@ -126,8 +126,7 @@
         self.state = 'PREVIEW';
         self.showPreview();
         if (CSB.bridge) { try { CSB.bridge.emit('shot.result', { dataUrl: self.dataUrl, w: w, h: h }); } catch (e) {} }
-        var methodLabel = self.captureMethod === 'stitch' ? 'stitched' :
-          self.captureMethod === 'debugger-sections' ? 'debugger sections' : 'debugger';
+        var methodLabel = self.captureMethod === 'stitch' ? 'stitched' : 'debugger';
         self.setStatus('ok', 'Screenshot ready (' + w + ' × ' + h + ' px, ' + methodLabel + ').');
         if (CSB.settings.get('notifications.screenshotCompleted', true)) {
           U.notify('CashSkillBD', 'Full-page screenshot captured.');
@@ -169,61 +168,31 @@
     },
 
     /** Full-page capture via the debugger: pixel-perfect, no scrolling.
-     * Normal pages: one shot with captureBeyondViewport.
-     * Very tall pages (>14k px, beyond the single-shot limit): section
-     * captures via clip (still no scrolling — tiles can never repeat/tear),
-     * stitched on a canvas here.
+     * Uses a single Page.captureScreenshot with captureBeyondViewport —
+     * Chrome natively renders the full page. No section clips (the clip
+     * parameter is unreliable across Chrome versions: if ignored, each
+     * "section" returns the full page and stitching duplicates it 5x).
+     * Very tall pages fall back to the verified scroll-stitch path.
      * Returns {canvas, dataUrl, w, h, method}, or null when unavailable. */
     debuggerShot: async function () {
       var format = CSB.settings.get('screenshot.format', 'png');
       var jpeg = format === 'jpg';
       var quality = CSB.settings.get('screenshot.quality', 'high') === 'high' ? 92 : 80;
-      var fullW = Math.max(document.documentElement.scrollWidth, window.innerWidth);
-      var fullH = Math.max(document.documentElement.scrollHeight, window.innerHeight);
+      var fullH = Math.max(document.documentElement.scrollHeight, document.body ? document.body.scrollHeight : 0, window.innerHeight);
       var hideCtx = this.hideFixed();
       try {
-        if (fullH <= 14000) {
-          var dataUrl = await this.debugCapture({ format: jpeg ? 'jpeg' : 'png', quality: quality });
-          if (!dataUrl) return null;
-          var img = await U.loadImage(dataUrl);
-          var canvas = document.createElement('canvas');
-          canvas.width = img.width;
-          canvas.height = img.height;
-          canvas.getContext('2d').drawImage(img, 0, 0);
-          return { canvas: canvas, dataUrl: dataUrl, w: img.width, h: img.height, method: 'debugger' };
-        }
-        // Tall page: capture viewport-height sections, stitch them.
-        // 7-5: guard against a zero viewport height (would loop forever).
-        var vh = window.innerHeight || 1;
-        var sections = [];
-        for (var y = 0; y < fullH; y += vh) {
-          sections.push({ x: 0, y: y, w: fullW, h: Math.min(vh, fullH - y) });
-        }
-        var dataUrls = await this.debugCaptureSections(sections, jpeg ? 'jpeg' : 'png', quality);
-        if (!dataUrls || !dataUrls.length) return null;
-        var dpr = window.devicePixelRatio || 1;
-        var canvas2 = document.createElement('canvas');
-        canvas2.width = Math.round(fullW * dpr);
-        canvas2.height = Math.round(fullH * dpr);
-        var ctx = canvas2.getContext('2d');
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, canvas2.width, canvas2.height);
-        for (var i = 0; i < dataUrls.length; i++) {
-          var simg = await U.loadImage(dataUrls[i]);
-          var sy = Math.round(sections[i].y * dpr);
-          var dw = canvas2.width;
-          // 7-3: use the true section height (sections[i].h * dpr), not the
-          // image aspect — CDP may round/clamp the returned image size.
-          var dh = Math.round(sections[i].h * dpr);
-          ctx.drawImage(simg, 0, sy, dw, dh);
-          this.setStatus('busy', 'Capturing full page… ' + Math.round(((i + 1) / dataUrls.length) * 100) + '%');
-        }
-        var mime = jpeg ? 'image/jpeg' : 'image/png';
-        return {
-          canvas: canvas2,
-          dataUrl: canvas2.toDataURL(mime, jpeg ? quality / 100 : undefined),
-          w: canvas2.width, h: canvas2.height, method: 'debugger-sections'
-        };
+        // Single shot for all pages — Chrome's captureBeyondViewport handles
+        // tall pages natively. If it fails (or the page is absurdly tall and
+        // Chrome returns an empty image), we fall back to stitchShot.
+        var dataUrl = await this.debugCapture({ format: jpeg ? 'jpeg' : 'png', quality: quality });
+        if (!dataUrl) return null;
+        var img = await U.loadImage(dataUrl);
+        if (!img || !img.width || !img.height) return null;
+        var canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        canvas.getContext('2d').drawImage(img, 0, 0);
+        return { canvas: canvas, dataUrl: dataUrl, w: img.width, h: img.height, method: 'debugger' };
       } finally {
         this.unhideFixed(hideCtx);
       }
@@ -237,23 +206,6 @@
             { type: 'CSB_DEBUG_CAPTURE', format: opts.format, quality: opts.quality },
             function (res) {
               if (res && res.ok) resolve(res.dataUrl);
-              else {
-                self.debugError = (res && res.error) || 'no response';
-                resolve(null);
-              }
-            });
-        } catch (e) { self.debugError = String((e && e.message) || e); resolve(null); }
-      });
-    },
-
-    debugCaptureSections: function (sections, format, quality) {
-      var self = this;
-      return new Promise(function (resolve) {
-        try {
-          chrome.runtime.sendMessage(
-            { type: 'CSB_DEBUG_CAPTURE_SECTIONS', sections: sections, format: format, quality: quality, dpr: window.devicePixelRatio || 1 },
-            function (res) {
-              if (res && res.ok) resolve(res.dataUrls);
               else {
                 self.debugError = (res && res.error) || 'no response';
                 resolve(null);
@@ -312,7 +264,8 @@
             var y = window.scrollY;
             if (Math.abs(y - targetY) <= 2) break;
           }
-          await U.sleep(120); // let lazy content render
+          // Let lazy content render; heavier pages need more time.
+          await U.sleep(300);
           var actualY = window.scrollY;
           if (Math.abs(actualY - targetY) <= 2) return actualY;
           // Not there yet — retry (req #3, #4).
