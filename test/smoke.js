@@ -175,11 +175,12 @@ t('overlay/modal accept pointer events (no click-through)',
 
 console.log('sidepanel architecture:');
 const manifest = JSON.parse(src('manifest.json'));
-t('manifest version 0.0.8', manifest.version === '0.0.8');
+t('manifest version 0.0.9', manifest.version === '0.0.9');
 t('debugger permission for pixel-perfect screenshots', manifest.permissions.includes('debugger'));
 t('sidePanel permission', manifest.permissions.includes('sidePanel'));
 t('side_panel default_path', manifest.side_panel && manifest.side_panel.default_path === 'src/sidepanel/panel.html');
-const csJs = manifest.content_scripts[0].js;
+const csMain = manifest.content_scripts.find(function (cs) { return cs.run_at !== 'document_start'; });
+const csJs = csMain.js;
 t('content_scripts drop retired files',
   !csJs.some((f) => /03-panel|05-controller/.test(f)) && !csJs.includes('src/content/09-settings.js'));
 t('content_scripts include tabhost', csJs.includes('src/content/13-tabhost.js'));
@@ -325,6 +326,20 @@ t('update check falls back to github.com redirect on API 403',
   /releases\/tag/.test(src('src/content/09-settings.js')));
 t('SW proxy returns final URL for redirects',
   /url: res\.url/.test(src('src/background/service-worker.js')));
+
+console.log('force-copy hardening:');
+t('early force-copy script runs at document_start',
+  (function () {
+    var m = JSON.parse(require('fs').readFileSync('manifest.json', 'utf8'));
+    return m.content_scripts.some(function (cs) {
+      return cs.run_at === 'document_start' &&
+        cs.js.indexOf('src/content/12a-force-copy-early.js') !== -1;
+    });
+  })());
+t('early script blocks beforecopy too',
+  /beforecopy/.test(src('src/content/12a-force-copy-early.js')));
+t('main force-copy disables early listeners when off',
+  /__CSB_FC_DISABLE/.test(src('src/content/12-force-copy.js')));
 t('manual check shows specific error reason',
   /Could not check for updates' \+ reason/.test(src('src/content/09-settings.js')));
 t('update throttle is hourly, not daily',

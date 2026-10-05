@@ -22,7 +22,7 @@
 
 (function () {
   var STYLE_ID = 'cashskillbd-force-copy';
-  var EVENTS = ['copy', 'cut', 'contextmenu', 'selectstart', 'dragstart'];
+  var EVENTS = ['beforecopy', 'copy', 'cut', 'contextmenu', 'selectstart', 'dragstart'];
 
   function blocker(e) {
     // Neutralize the page's copy-blocking listeners. The default action
@@ -61,6 +61,8 @@
         for (var i = 0; i < EVENTS.length; i++) {
           window.removeEventListener(EVENTS[i], blocker, true);
         }
+        // Also remove the early (document_start) listeners.
+        if (window.__CSB_FC_DISABLE) window.__CSB_FC_DISABLE();
       } catch (e) {}
       this.active = false;
     },

@@ -47,6 +47,16 @@
         "<all_urls>"
       ],
       "js": [
+        "src/content/12a-force-copy-early.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": false
+    },
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
         "src/content/00-util.js",
         "src/content/01-storage.js",
         "src/content/02-styles.js",
@@ -85,7 +95,7 @@
     "debugger"
   ],
   "short_name": "CashSkill",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "web_accessible_resources": [
     {
       "matches": [
