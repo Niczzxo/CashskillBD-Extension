@@ -66,7 +66,9 @@
       neverHosts: []
     },
     updates: {
-      repo: 'Niczzxo/CashskillBD-Extension' // GitHub "username/repo" for "Check for updates"
+      repo: 'Niczzxo/CashskillBD-Extension', // GitHub "username/repo" for "Check for updates"
+      lastCheck: 0, // timestamp of the last automatic update check
+      dismissed: '' // latest version the user dismissed
     },
     notifications: {
       typingCompleted: true,

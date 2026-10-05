@@ -175,7 +175,7 @@ t('overlay/modal accept pointer events (no click-through)',
 
 console.log('sidepanel architecture:');
 const manifest = JSON.parse(src('manifest.json'));
-t('manifest version 0.0.1', manifest.version === '0.0.1');
+t('manifest version 0.0.2', manifest.version === '0.0.2');
 t('debugger permission for pixel-perfect screenshots', manifest.permissions.includes('debugger'));
 t('sidePanel permission', manifest.permissions.includes('sidePanel'));
 t('side_panel default_path', manifest.side_panel && manifest.side_panel.default_path === 'src/sidepanel/panel.html');
@@ -262,6 +262,17 @@ t('version compare works',
 t('checkForUpdates wired to about section',
   /checkForUpdates/.test(src('src/content/09-settings.js')) &&
   /releases\/latest/.test(src('src/content/09-settings.js')));
+
+console.log('v0.0.2 typing + update popup:');
+t('typing consumes full unicode chars (surrogate aware)',
+  /0xD800/.test(src('src/content/04-typing.js')) && /chLen/.test(src('src/content/04-typing.js')));
+t('repo input hidden from about section',
+  !/GitHub update repo/.test(src('src/content/09-settings.js')));
+t('auto update check on panel open',
+  typeof CSB.settingsUI.autoCheck === 'function' &&
+  /autoCheck\(\)/.test(src('src/sidepanel/panel.js')));
+t('update popup dismiss remembered',
+  /updates\.dismissed/.test(src('src/content/09-settings.js')));
 t('SW handles CSB_DEBUG_CAPTURE', /CSB_DEBUG_CAPTURE/.test(src('src/background/service-worker.js')));
 t('screenshot has debuggerShot + stitchShot fallback',
   typeof CSB.screenshot.debuggerShot === 'function' &&

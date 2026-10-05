@@ -227,12 +227,20 @@
         return;
       }
 
+      // Consume a full Unicode character (surrogate-pair aware), so emoji
+      // and other non-BMP characters are typed as one unit.
       var ch = this.text[this.charIndex];
+      var chLen = 1;
+      var hi = this.text.charCodeAt(this.charIndex);
+      if (hi >= 0xD800 && hi <= 0xDBFF && this.charIndex + 1 < this.text.length) {
+        var lo = this.text.charCodeAt(this.charIndex + 1);
+        if (lo >= 0xDC00 && lo <= 0xDFFF) { ch = this.text.substr(this.charIndex, 2); chLen = 2; }
+      }
       var doMistake = Math.random() * 100 < this.mistakeRate() &&
-        /[a-zA-Z ]/.test(ch) && this.charIndex < this.text.length - 1;
+        /[a-zA-Z ]/.test(ch) && this.charIndex + chLen < this.text.length;
 
       var afterChar = function () {
-        self.charIndex++;
+        self.charIndex += chLen;
         self.updateProgress();
         self.timer = setTimeout(function () { self.step(myRun); }, self.interval());
       };

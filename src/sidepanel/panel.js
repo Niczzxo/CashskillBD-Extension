@@ -304,5 +304,12 @@
     } catch (e) {}
     switchTab(last, false);
     consumePendingCommand();
+    // Automatic update check: pops up only when a new, undismissed
+    // release exists (throttled to once a day).
+    if (CSB.settingsUI && CSB.settingsUI.autoCheck) {
+      setTimeout(function () {
+        try { CSB.settingsUI.autoCheck(); } catch (e) {}
+      }, 2000);
+    }
   });
 })();

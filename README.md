@@ -150,6 +150,8 @@ CashSkillBD does **not** request history, bookmarks, or any account access.
 
 ## Version
 
+**0.0.2** — typing engine is now surrogate-pair aware (emoji/non-BMP safe); repo field hidden from About (update repo is built-in); automatic update popup when the panel opens and a new release exists (once a day, dismissible).
+
 **0.0.1** — renumbered from 1.0.22 (fresh versioning). GitHub: omarfaruque90/cashskillbd.
 
 **1.0.22** — "Check for updates" now really works: set your GitHub repo (Settings → About → GitHub update repo), push the extension, and create a Release per version tagged like v1.0.22 with the zip attached — the button compares with the latest release and offers the download.

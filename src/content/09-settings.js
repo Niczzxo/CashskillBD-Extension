@@ -342,23 +342,6 @@
       var ver = U.el('div', 'csb-about-ver', 'Version ' + U.esc(chrome.runtime.getManifest().version));
       wrap.appendChild(logo); wrap.appendChild(name); wrap.appendChild(tag); wrap.appendChild(ver);
       page.appendChild(wrap);
-      (function () {
-        var row = U.el('div', 'csb-set-item');
-        row.appendChild(U.el('div', 'csb-set-label', 'GitHub update repo'));
-        row.appendChild(U.el('div', 'csb-set-desc',
-          'Your repo as username/repo — "Check for updates" compares against its latest release.'));
-        var input = U.el('input', 'csb-input');
-        input.type = 'text';
-        input.placeholder = 'username/repo';
-        input.value = CSB.settings.get('updates.repo', '');
-        input.style.maxWidth = '240px';
-        input.setAttribute('aria-label', 'GitHub update repo');
-        input.addEventListener('change', function () {
-          CSB.settings.set('updates.repo', input.value.trim());
-        });
-        row.appendChild(input);
-        page.appendChild(row);
-      })();
       page.appendChild(actionRow('Check for updates', 'Compare with the latest GitHub release.', 'CHECK', function () {
         CSB.settingsUI.checkForUpdates();
       }));
@@ -458,16 +441,23 @@
       this.showCat(cur);
     },
 
-    modal: function (title, html) {
+    modal: function (title, html, onClose) {
       var back = U.el('div', 'csb-modal-back');
       var m = U.el('div', 'csb-modal', '<h4>' + U.esc(title) + '</h4>' + html);
       var close = U.el('button', 'csb-btn csb-btn-primary csb-btn-sm', 'CLOSE');
       close.type = 'button';
       close.style.marginTop = '10px';
-      close.addEventListener('click', function () { back.remove(); });
+      var closed = false;
+      function doClose() {
+        if (closed) return;
+        closed = true;
+        try { back.remove(); } catch (e) {}
+        if (onClose) { try { onClose(); } catch (e2) {} }
+      }
+      close.addEventListener('click', doClose);
       m.appendChild(close);
       back.appendChild(m);
-      back.addEventListener('click', function (e) { if (e.target === back) back.remove(); });
+      back.addEventListener('click', function (e) { if (e.target === back) doClose(); });
       CSB.panel.root.appendChild(back);
     },
 
@@ -476,6 +466,32 @@
         Array.prototype.forEach.call(
           CSB.panel.root.querySelectorAll('.csb-modal-back'),
           function (b) { b.remove(); });
+      } catch (e) {}
+    },
+
+    /** Silent check when the panel opens; pops up only for a new,
+     * undismissed update (throttled to once a day). */
+    autoCheck: async function () {
+      try {
+        var now = Date.now();
+        var last = CSB.settings.get('updates.lastCheck', 0) || 0;
+        if (now - last < 24 * 3600 * 1000) return;
+        CSB.settings.set('updates.lastCheck', now);
+        var repo = String(CSB.settings.get('updates.repo', '') || '').trim();
+        if (!repo || repo.split('/').length !== 2) return;
+        var cur = chrome.runtime.getManifest().version;
+        var res = await fetch('https://api.github.com/repos/' + repo + '/releases/latest');
+        if (!res.ok) return;
+        var rel = await res.json();
+        var latest = String(rel.tag_name || '').trim().replace(/^[vV]/, '');
+        if (!latest || compareVersions(latest, cur) <= 0) return;
+        if (CSB.settings.get('updates.dismissed', '') === latest) return;
+        var url = (rel.assets && rel.assets[0] && rel.assets[0].browser_download_url) || rel.html_url;
+        this.modal('Update available',
+          '<p>A newer version of CashSkillBD is available: <b>v' + U.esc(latest) + '</b> (you have v' + U.esc(cur) + ').</p>' +
+          '<p><a href="' + U.esc(url) + '" target="_blank" rel="noopener">Download the update</a></p>' +
+          '<p class="csb-hint">Download the zip, extract it, then reload the extension at chrome://extensions.</p>',
+          function () { CSB.settings.set('updates.dismissed', latest); });
       } catch (e) {}
     },
 
@@ -488,10 +504,7 @@
       this.closeModals();
       if (!repo || repo.split('/').length !== 2) {
         this.modal('Check for updates',
-          '<p>First set your <b>GitHub update repo</b> below (format: <span class="csb-kbd">username/repo</span>).</p>' +
-          '<p>Push the extension to GitHub, then create a <b>Release</b> per version — tag it like ' +
-          '<span class="csb-kbd">v' + U.esc(cur) + '</span> and attach the zip file.</p>' +
-          '<p>“Check for updates” then compares your installed version with the latest release tag.</p>');
+          '<p>Update checking is not configured in this build.</p>');
         return;
       }
       this.modal('Check for updates', '<p>Checking <span class="csb-kbd">' + U.esc(repo) + '</span>…</p>');
@@ -509,7 +522,8 @@
             '<p>A newer version is available: <b>v' + U.esc(latest) + '</b> (you have v' + U.esc(cur) + ').</p>' +
             (rel.name ? '<p>' + U.esc(String(rel.name)).slice(0, 200) + '</p>' : '') +
             '<p><a href="' + U.esc(url) + '" target="_blank" rel="noopener">Download the update</a></p>' +
-            '<p class="csb-hint">Unpacked extensions can’t update themselves: download the zip, extract it, then reload the extension at chrome://extensions.</p>');
+            '<p class="csb-hint">Unpacked extensions can’t update themselves: download the zip, extract it, then reload the extension at chrome://extensions.</p>',
+            function () { CSB.settings.set('updates.dismissed', latest); });
         } else {
           self.modal('Check for updates',
             '<p>You are running <b>CashSkillBD v' + U.esc(cur) + '</b> — the latest release' +
