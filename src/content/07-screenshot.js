@@ -121,7 +121,9 @@
         self.state = 'PREVIEW';
         self.showPreview();
         if (CSB.bridge) { try { CSB.bridge.emit('shot.result', { dataUrl: self.dataUrl, w: w, h: h }); } catch (e) {} }
-        self.setStatus('ok', 'Screenshot ready (' + w + ' × ' + h + ' px).');
+        var methodLabel = self.captureMethod === 'stitch' ? 'stitched' :
+          self.captureMethod === 'debugger-sections' ? 'debugger sections' : 'debugger';
+        self.setStatus('ok', 'Screenshot ready (' + w + ' × ' + h + ' px, ' + methodLabel + ').');
         if (CSB.settings.get('notifications.screenshotCompleted', true)) {
           U.notify('CashSkillBD', 'Full-page screenshot captured.');
         }
@@ -140,6 +142,10 @@
           return;
         }
         // 2) Fall back to scroll stitching when the debugger is unavailable.
+        if (self.debugError) {
+          try { console.warn('[CashSkillBD] debugger capture failed:', self.debugError); } catch (e2) {}
+        }
+        self.setStatus('busy', 'Capturing full page… (stitching)');
         var st = await this.stitchShot();
         this.canvas = st.canvas;
         this.dataUrl = st.dataUrl;
@@ -216,22 +222,36 @@
     },
 
     debugCapture: function (opts) {
+      var self = this;
       return new Promise(function (resolve) {
         try {
           chrome.runtime.sendMessage(
             { type: 'CSB_DEBUG_CAPTURE', format: opts.format, quality: opts.quality },
-            function (res) { resolve(res && res.ok ? res.dataUrl : null); });
-        } catch (e) { resolve(null); }
+            function (res) {
+              if (res && res.ok) resolve(res.dataUrl);
+              else {
+                self.debugError = (res && res.error) || 'no response';
+                resolve(null);
+              }
+            });
+        } catch (e) { self.debugError = String((e && e.message) || e); resolve(null); }
       });
     },
 
     debugCaptureSections: function (sections, format, quality) {
+      var self = this;
       return new Promise(function (resolve) {
         try {
           chrome.runtime.sendMessage(
             { type: 'CSB_DEBUG_CAPTURE_SECTIONS', sections: sections, format: format, quality: quality },
-            function (res) { resolve(res && res.ok ? res.dataUrls : null); });
-        } catch (e) { resolve(null); }
+            function (res) {
+              if (res && res.ok) resolve(res.dataUrls);
+              else {
+                self.debugError = (res && res.error) || 'no response';
+                resolve(null);
+              }
+            });
+        } catch (e) { self.debugError = String((e && e.message) || e); resolve(null); }
       });
     },
 
@@ -252,7 +272,9 @@
       var sbSheet = null;
       try {
         sbSheet = new CSSStyleSheet();
-        sbSheet.replaceSync('::-webkit-scrollbar{width:0 !important;height:0 !important;}');
+        sbSheet.replaceSync(
+          '::-webkit-scrollbar{width:0 !important;height:0 !important;}' +
+          'html{scroll-behavior:auto !important;}');
         document.adoptedStyleSheets = document.adoptedStyleSheets.concat([sbSheet]);
       } catch (e) {}
 

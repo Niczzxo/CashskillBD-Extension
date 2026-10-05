@@ -175,7 +175,7 @@ t('overlay/modal accept pointer events (no click-through)',
 
 console.log('sidepanel architecture:');
 const manifest = JSON.parse(src('manifest.json'));
-t('manifest version 0.0.5', manifest.version === '0.0.5');
+t('manifest version 0.0.6', manifest.version === '0.0.6');
 t('debugger permission for pixel-perfect screenshots', manifest.permissions.includes('debugger'));
 t('sidePanel permission', manifest.permissions.includes('sidePanel'));
 t('side_panel default_path', manifest.side_panel && manifest.side_panel.default_path === 'src/sidepanel/panel.html');
@@ -326,6 +326,15 @@ t('stitching does not use overflow:hidden (breaks visual scroll)',
     return body.indexOf("overflow = 'hidden'") === -1 &&
       /::-webkit-scrollbar/.test(body);
   })());
+
+console.log('v0.0.6 screenshot diagnostics:');
+t('capture method shown in status',
+  /methodLabel/.test(src('src/content/07-screenshot.js')) &&
+  /px, ' \+ methodLabel/.test(src('src/content/07-screenshot.js')));
+t('debugger failure reason tracked',
+  /debugError/.test(src('src/content/07-screenshot.js')));
+t('smooth scroll disabled during stitching',
+  /scroll-behavior:auto/.test(src('src/content/07-screenshot.js')));
 
 (async function () {
   // Functional: primary provider fails -> backup is used automatically.
