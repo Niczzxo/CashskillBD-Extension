@@ -251,7 +251,7 @@
       return new Promise(function (resolve) {
         try {
           chrome.runtime.sendMessage(
-            { type: 'CSB_DEBUG_CAPTURE_SECTIONS', sections: sections, format: format, quality: quality },
+            { type: 'CSB_DEBUG_CAPTURE_SECTIONS', sections: sections, format: format, quality: quality, dpr: window.devicePixelRatio || 1 },
             function (res) {
               if (res && res.ok) resolve(res.dataUrls);
               else {
@@ -263,15 +263,26 @@
       });
     },
 
-    /** Legacy scroll-stitch capture (fallback when the debugger is unavailable). */
+    /** Scroll-stitch capture (fallback when the debugger is unavailable).
+     *
+     * ROOT-CAUSE FIX for the "same page repeated vertically" bug:
+     * - Every scroll is VERIFIED: target Y → scroll → wait → read actual Y.
+     * - A frame is captured ONLY if actual Y matches the target (within 2px).
+     * - Each frame records its ACTUAL scroll Y; stitching draws at the actual
+     *   position, never the target position.
+     * - Duplicate positions are rejected, not stitched.
+     * - After 3 failed scroll attempts for a target, the capture aborts with
+     *   an honest error instead of producing a broken duplicated image.
+     */
     stitchShot: async function () {
+      var self = this;
       var origX = window.scrollX, origY = window.scrollY;
       var dpr = window.devicePixelRatio || 1;
       var qualityScale = CSB.settings.get('screenshot.quality', 'high') === 'high' ? 1 : 0.75;
       var scale = dpr * qualityScale;
-      var vw = window.innerWidth, vh = window.innerHeight;
-      var fullW = Math.max(document.documentElement.scrollWidth, vw);
-      var fullH = Math.max(document.documentElement.scrollHeight, vh);
+      var vw = window.innerWidth, vh = window.innerHeight || 1;
+      var fullW = Math.max(document.documentElement.scrollWidth, document.body ? document.body.scrollWidth : 0, vw);
+      var fullH = Math.max(document.documentElement.scrollHeight, document.body ? document.body.scrollHeight : 0, vh);
       var hideCtx = this.hideFixed();
       // Hide scrollbars WITHOUT touching overflow: setting
       // documentElement.style.overflow='hidden' clips the visual viewport so
@@ -286,44 +297,113 @@
         document.adoptedStyleSheets = document.adoptedStyleSheets.concat([sbSheet]);
       } catch (e) {}
 
+      // Capture session state — cleared fresh for every screenshot (req #19).
+      var frames = []; // {dataUrl, actualY}
+      var capturedYs = [];
+
+      /** Scroll to targetY and verify. Returns actual Y, or null if the page
+       *  refuses to reach the target after retries. */
+      async function scrollAndVerify(targetY) {
+        for (var attempt = 0; attempt < 3; attempt++) {
+          window.scrollTo(origX, targetY);
+          // Wait for scroll + render (req #14). Poll for position to settle.
+          for (var p = 0; p < 10; p++) {
+            await U.sleep(60);
+            var y = window.scrollY;
+            if (Math.abs(y - targetY) <= 2) break;
+          }
+          await U.sleep(120); // let lazy content render
+          var actualY = window.scrollY;
+          if (Math.abs(actualY - targetY) <= 2) return actualY;
+          // Not there yet — retry (req #3, #4).
+        }
+        return null;
+      }
+
       try {
         var canvas = document.createElement('canvas');
-        canvas.width = Math.round(vw * scale);
+        canvas.width = Math.round(fullW * scale);
         canvas.height = Math.round(fullH * scale);
         var ctx2d = canvas.getContext('2d');
         ctx2d.fillStyle = '#ffffff';
         ctx2d.fillRect(0, 0, canvas.width, canvas.height);
 
-        var steps = Math.max(1, Math.ceil(fullH / vh));
-        var stuckCount = 0;
-        for (var i = 0; i < steps; i++) {
-          var y = Math.min(i * vh, fullH - vh);
-          window.scrollTo(origX, y);
-          await U.sleep(280); // let lazy content settle
-          // If the page refuses to scroll (custom scroller / overflow lock),
-          // we'd capture the same viewport repeatedly — abort instead of
-          // producing a broken image with duplicated sections.
-          if (Math.abs(window.scrollY - y) > 2) {
-            stuckCount++;
-            if (stuckCount >= 2) {
-              throw new Error('This page blocks programmatic scrolling, so a stitched full-page capture is not possible here.');
-            }
-          } else {
-            stuckCount = 0;
+        // Build the target list: 0, vh, 2*vh, ... + final partial (req #7).
+        var targets = [];
+        for (var t = 0; t < fullH; t += vh) targets.push(t);
+        // Ensure the bottom edge is covered: if the last target doesn't reach
+        // fullH - vh, add it (avoids missing content without full duplication).
+        var lastCover = targets.length ? targets[targets.length - 1] + vh : 0;
+        if (lastCover < fullH - 2) {
+          var finalY = Math.max(0, fullH - vh);
+          if (!targets.length || Math.abs(finalY - targets[targets.length - 1]) > 2) {
+            targets.push(finalY);
           }
-          var shot = await this.captureVisibleThrottled();
-          var img = await U.loadImage(shot);
-          var dw = Math.round(vw * scale), dh = Math.round(vh * scale);
-          var sy = Math.round(y * scale);
-          // Last tile may be shorter than a viewport.
+        }
+
+        var done = 0;
+        for (var i = 0; i < targets.length; i++) {
+          var targetY = targets[i];
+          // Skip if we already captured this position (req #4, #9).
+          var dup = false;
+          for (var d = 0; d < capturedYs.length; d++) {
+            if (Math.abs(capturedYs[d] - targetY) <= 2) { dup = true; break; }
+          }
+          if (dup) { done++; continue; }
+
+          var actualY = await scrollAndVerify(targetY);
+          if (actualY === null) {
+            throw new Error('Unable to scroll the page correctly for full-page capture.');
+          }
+          // Double-check against history with the ACTUAL position (req #9).
+          var dup2 = false;
+          for (var d2 = 0; d2 < capturedYs.length; d2++) {
+            if (Math.abs(capturedYs[d2] - actualY) <= 2) { dup2 = true; break; }
+          }
+          if (dup2) { done++; continue; }
+
+          var shot = await self.captureVisibleThrottled();
+          frames.push({ dataUrl: shot, actualY: actualY });
+          capturedYs.push(actualY);
+          done++;
+          self.setStatus('busy', 'Capturing full page… ' + Math.round((done / targets.length) * 100) + '%');
+        }
+
+        // Stitch using ACTUAL capture positions (req #8).
+        for (var f = 0; f < frames.length; f++) {
+          var fr = frames[f];
+          var img = await U.loadImage(fr.dataUrl);
+          var dw = Math.round(fullW * scale);
+          // Source: the captured viewport image (device pixels).
+          // Dest: positioned at the ACTUAL scroll Y.
+          var sy = Math.round(fr.actualY * scale);
+          var dh = Math.round(vh * scale);
+          // Clip the source if the frame would overflow the canvas bottom.
           var remain = canvas.height - sy;
-          var sh = Math.min(dh, remain);
-          if (sh > 0) {
-            // Draw only the needed slice of the tile.
-            var srcH = img.height * (sh / dh);
-            ctx2d.drawImage(img, 0, img.height - srcH, img.width, srcH, 0, sy, dw, sh);
+          var drawH = Math.min(dh, remain);
+          if (drawH <= 0) continue;
+          // The image may be taller than one viewport in device pixels if
+          // the browser captured at full DPR; slice proportionally from top.
+          var srcH = img.height * (drawH / dh);
+          var srcW = img.width;
+          // Center-crop horizontally if the capture is wider than the page
+          // (e.g. scrollbar area) — draw only the page width.
+          var sx = 0;
+          var drawW = Math.round(fullW * scale);
+          if (srcW > drawW) {
+            sx = Math.round((srcW - drawW) / 2);
+            srcW = drawW;
           }
-          this.setStatus('busy', 'Capturing full page… ' + Math.round(((i + 1) / steps) * 100) + '%');
+          ctx2d.drawImage(img, sx, 0, srcW, srcH, 0, sy, drawW, drawH);
+        }
+
+        // Validate (req #20): we must have covered the page height.
+        var maxCovered = 0;
+        for (var v = 0; v < capturedYs.length; v++) {
+          maxCovered = Math.max(maxCovered, capturedYs[v] + vh);
+        }
+        if (maxCovered < fullH - vh * 0.5 && capturedYs.length > 0) {
+          throw new Error('Screenshot is incomplete — the page could not be fully captured.');
         }
 
         window.scrollTo(origX, origY);

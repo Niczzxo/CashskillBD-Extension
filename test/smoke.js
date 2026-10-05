@@ -175,7 +175,7 @@ t('overlay/modal accept pointer events (no click-through)',
 
 console.log('sidepanel architecture:');
 const manifest = JSON.parse(src('manifest.json'));
-t('manifest version 0.1.1', manifest.version === '0.1.1');
+t('manifest version 0.1.2', manifest.version === '0.1.2');
 t('debugger permission for pixel-perfect screenshots', manifest.permissions.includes('debugger'));
 t('sidePanel permission', manifest.permissions.includes('sidePanel'));
 t('side_panel default_path', manifest.side_panel && manifest.side_panel.default_path === 'src/sidepanel/panel.html');
@@ -307,7 +307,7 @@ t('debugger section capture for tall pages',
 t('SW handles CSB_DEBUG_CAPTURE_SECTIONS',
   /CSB_DEBUG_CAPTURE_SECTIONS/.test(src('src/background/service-worker.js')));
 t('stitch fallback aborts when page will not scroll',
-  /blocks programmatic scrolling/.test(src('src/content/07-screenshot.js')));
+  /Unable to scroll the page correctly for full-page capture/.test(src('src/content/07-screenshot.js')));
 t('update check only stamps lastCheck on success',
   (function () {
     var s = src('src/content/09-settings.js');
@@ -422,6 +422,26 @@ t('body background follows theme via JS',
   /document\.body\.style\.background/.test(src('src/sidepanel/panel.js')));
 t('brand name gradient has text-fill transparent',
   /csb-brand-name \{[^}]*-webkit-text-fill-color: transparent/.test(src('src/content/02-styles.js')));
+
+console.log('screenshot anti-duplication:');
+t('scroll verified before capture (req #3)',
+  /scrollAndVerify/.test(src('src/content/07-screenshot.js')) && /Math\.abs\(actualY - targetY\) <= 2/.test(src('src/content/07-screenshot.js')));
+t('duplicate positions rejected (req #4, #9)',
+  /capturedYs/.test(src('src/content/07-screenshot.js')) && /dup2/.test(src('src/content/07-screenshot.js')));
+t('frames store actual Y, stitch at actual (req #8)',
+  /actualY: actualY/.test(src('src/content/07-screenshot.js')) && /fr\.actualY \* scale/.test(src('src/content/07-screenshot.js')));
+t('scroll retry up to 3 attempts (req #3)',
+  /attempt < 3/.test(src('src/content/07-screenshot.js')));
+t('abort on scroll failure with honest error',
+  /Unable to scroll the page correctly/.test(src('src/content/07-screenshot.js')));
+t('full dimensions use body fallback (req #6)',
+  /document\.body \? document\.body\.scrollHeight/.test(src('src/content/07-screenshot.js')));
+t('final partial section handled (req #7)',
+  /finalY = Math\.max\(0, fullH - vh\)/.test(src('src/content/07-screenshot.js')));
+t('final image validated (req #20)',
+  /maxCovered/.test(src('src/content/07-screenshot.js')));
+t('debugger sections use page DPR (req #10)',
+  /msg\.dpr/.test(src('src/background/service-worker.js')) && /scale: scale/.test(src('src/background/service-worker.js')));
 t('manual check shows specific error reason',
   /Could not check for updates' \+ reason/.test(src('src/content/09-settings.js')));
 t('update throttle is hourly, not daily',

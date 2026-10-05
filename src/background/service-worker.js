@@ -110,17 +110,20 @@ async function debugCaptureFullPage(tabId, format, quality) {
 /** Section captures for very tall pages: each clip is captured directly via
  * the debugger WITHOUT scrolling, so tiles can never repeat or tear.
  * sections = [{x, y, w, h}] in CSS pixels. Returns dataUrl array. */
-async function debugCaptureSections(tabId, sections, format, quality) {
+async function debugCaptureSections(tabId, sections, format, quality, dpr) {
   const target = { tabId };
   await chrome.debugger.attach(target, '1.3');
   try {
     const out = [];
     const fmt = format === 'jpeg' ? 'jpeg' : 'png';
+    // Use the page's devicePixelRatio for the clip scale so the returned
+    // image dimensions match what the content script expects (req #10).
+    const scale = (dpr && dpr > 0) ? dpr : 1;
     for (const s of sections) {
       const params = {
         captureBeyondViewport: true,
         format: fmt,
-        clip: { x: s.x, y: s.y, width: s.w, height: s.h, scale: 1 }
+        clip: { x: s.x, y: s.y, width: s.w, height: s.h, scale: scale }
       };
       if (fmt === 'jpeg' && quality) params.quality = quality;
       const res = await chrome.debugger.sendCommand(target, 'Page.captureScreenshot', params);
@@ -238,7 +241,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (tabId == null || !Array.isArray(msg.sections) || !msg.sections.length) {
       sendResponse({ ok: false, error: 'bad sections' }); return false;
     }
-    debugCaptureSections(tabId, msg.sections, msg.format, msg.quality).then(
+    debugCaptureSections(tabId, msg.sections, msg.format, msg.quality, msg.dpr).then(
       (dataUrls) => sendResponse({ ok: true, dataUrls }),
       (err) => sendResponse({ ok: false, error: String((err && err.message) || err) })
     );
