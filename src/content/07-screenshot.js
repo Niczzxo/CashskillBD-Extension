@@ -174,11 +174,63 @@
      * "section" returns the full page and stitching duplicates it 5x).
      * Very tall pages fall back to the verified scroll-stitch path.
      * Returns {canvas, dataUrl, w, h, method}, or null when unavailable. */
+    /** Compute a lightweight hash of an image's visual content by sampling
+     *  pixels. Used to detect duplicated frames (same viewport captured
+     *  twice) without expensive full-image comparison. */
+    imageHash: function (img) {
+      try {
+        var c = document.createElement('canvas');
+        // Downscale to 32x32 for a compact hash — enough to detect duplicates.
+        c.width = 32; c.height = 32;
+        var ctx = c.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(img, 0, 0, 32, 32);
+        var d = ctx.getImageData(0, 0, 32, 32).data;
+        var h = 0;
+        for (var i = 0; i < d.length; i += 16) {
+          h = ((h * 31) + d[i] + d[i + 1] * 2 + d[i + 2] * 3) | 0;
+        }
+        return h;
+      } catch (e) { return 0; }
+    },
+
+    /** Check if a full-page debugger image contains vertically repeated
+     *  content (the "same page Nx" bug). Samples strips at viewport intervals
+     *  and compares them. Returns true if duplication is detected. */
+    hasVerticalDuplication: function (img, viewportH) {
+      try {
+        if (!img || img.height < viewportH * 2.5) return false;
+        var c = document.createElement('canvas');
+        c.width = 32; c.height = 32;
+        var ctx = c.getContext('2d', { willReadFrequently: true });
+        // Sample a strip from the top and one from exactly one viewport down.
+        // If the page content repeats, these will be nearly identical.
+        function stripHash(y) {
+          var sh = Math.min(32, img.height - y);
+          if (sh <= 0) return 0;
+          ctx.clearRect(0, 0, 32, 32);
+          ctx.drawImage(img, 0, y, img.width, sh, 0, 0, 32, 32);
+          var d = ctx.getImageData(0, 0, 32, 32).data;
+          var h = 0;
+          for (var i = 0; i < d.length; i += 32) {
+            h = ((h * 31) + d[i]) | 0;
+          }
+          return h;
+        }
+        var h1 = stripHash(0);
+        var h2 = stripHash(Math.round(viewportH));
+        // Also check at 2x viewport for triple+ duplication.
+        var h3 = stripHash(Math.round(viewportH * 2));
+        return (h1 !== 0 && h1 === h2) || (h2 !== 0 && h2 === h3);
+      } catch (e) { return false; }
+    },
+
     debuggerShot: async function () {
       var format = CSB.settings.get('screenshot.format', 'png');
       var jpeg = format === 'jpg';
       var quality = CSB.settings.get('screenshot.quality', 'high') === 'high' ? 92 : 80;
       var fullH = Math.max(document.documentElement.scrollHeight, document.body ? document.body.scrollHeight : 0, window.innerHeight);
+      var dpr = window.devicePixelRatio || 1;
+      var vh = window.innerHeight || 1;
       var hideCtx = this.hideFixed();
       try {
         // Single shot for all pages — Chrome's captureBeyondViewport handles
@@ -188,6 +240,13 @@
         if (!dataUrl) return null;
         var img = await U.loadImage(dataUrl);
         if (!img || !img.width || !img.height) return null;
+        // Validate: reject images with vertically duplicated content.
+        // This catches the Chrome-level bug where captureBeyondViewport
+        // returns the same viewport tiled vertically (e.g. on Taobao).
+        if (this.hasVerticalDuplication(img, vh * dpr)) {
+          this.debugError = 'debugger returned duplicated content';
+          return null; // fall back to verified stitch
+        }
         var canvas = document.createElement('canvas');
         canvas.width = img.width;
         canvas.height = img.height;
@@ -250,7 +309,7 @@
       } catch (e) {}
 
       // Capture session state — cleared fresh for every screenshot (req #19).
-      var frames = []; // {dataUrl, actualY}
+      var frames = []; // {dataUrl, actualY, hash}
       var capturedYs = [];
 
       /** Scroll to targetY and verify. Returns actual Y, or null if the page
@@ -316,7 +375,17 @@
           if (dup2) { done++; continue; }
 
           var shot = await self.captureVisibleThrottled();
-          frames.push({ dataUrl: shot, actualY: actualY });
+          // Image-level duplicate check (req #19): even if scrollY changed,
+          // the rendered pixels might be identical (render lag / virtual
+          // scroller). Compare against all previous frames.
+          var shotImg = await U.loadImage(shot);
+          var shotHash = self.imageHash(shotImg);
+          var imgDup = false;
+          for (var hd = 0; hd < frames.length; hd++) {
+            if (frames[hd].hash !== 0 && frames[hd].hash === shotHash) { imgDup = true; break; }
+          }
+          if (imgDup) { done++; continue; }
+          frames.push({ dataUrl: shot, actualY: actualY, hash: shotHash });
           capturedYs.push(actualY);
           done++;
           self.setStatus('busy', 'Capturing full page… ' + Math.round((done / targets.length) * 100) + '%');

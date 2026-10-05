@@ -175,7 +175,7 @@ t('overlay/modal accept pointer events (no click-through)',
 
 console.log('sidepanel architecture:');
 const manifest = JSON.parse(src('manifest.json'));
-t('manifest version 0.1.3', manifest.version === '0.1.3');
+t('manifest version 0.1.4', manifest.version === '0.1.4');
 t('debugger permission for pixel-perfect screenshots', manifest.permissions.includes('debugger'));
 t('sidePanel permission', manifest.permissions.includes('sidePanel'));
 t('side_panel default_path', manifest.side_panel && manifest.side_panel.default_path === 'src/sidepanel/panel.html');
@@ -442,6 +442,14 @@ t('final image validated (req #20)',
   /maxCovered/.test(src('src/content/07-screenshot.js')));
 // req #10 obsolete for sections: single debugger shot needs no clip scale;
 // stitch path handles DPR via scale = dpr * qualityScale.
+
+console.log('image-level duplicate protection:');
+t('debugger validates against vertical duplication',
+  /hasVerticalDuplication/.test(src('src/content/07-screenshot.js')));
+t('stitch compares frame image hashes',
+  /shotHash/.test(src('src/content/07-screenshot.js')) && /frames\[hd\]\.hash/.test(src('src/content/07-screenshot.js')));
+t('imageHash samples pixels',
+  /imageHash: function/.test(src('src/content/07-screenshot.js')));
 t('manual check shows specific error reason',
   /Could not check for updates' \+ reason/.test(src('src/content/09-settings.js')));
 t('update throttle is hourly, not daily',
