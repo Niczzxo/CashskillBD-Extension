@@ -175,7 +175,7 @@ t('overlay/modal accept pointer events (no click-through)',
 
 console.log('sidepanel architecture:');
 const manifest = JSON.parse(src('manifest.json'));
-t('manifest version 0.0.4', manifest.version === '0.0.4');
+t('manifest version 0.0.5', manifest.version === '0.0.5');
 t('debugger permission for pixel-perfect screenshots', manifest.permissions.includes('debugger'));
 t('sidePanel permission', manifest.permissions.includes('sidePanel'));
 t('side_panel default_path', manifest.side_panel && manifest.side_panel.default_path === 'src/sidepanel/panel.html');
@@ -317,6 +317,15 @@ t('update check only stamps lastCheck on success',
   })());
 t('update throttle is hourly, not daily',
   /now - last < 3600 \* 1000/.test(src('src/content/09-settings.js')));
+
+console.log('v0.0.5 screenshot stitching fix:');
+t('stitching does not use overflow:hidden (breaks visual scroll)',
+  (function () {
+    var s = src('src/content/07-screenshot.js');
+    var body = s.split('stitchShot: async function')[1].split('showPreview: function')[0];
+    return body.indexOf("overflow = 'hidden'") === -1 &&
+      /::-webkit-scrollbar/.test(body);
+  })());
 
 (async function () {
   // Functional: primary provider fails -> backup is used automatically.

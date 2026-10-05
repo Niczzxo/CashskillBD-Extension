@@ -245,13 +245,18 @@
       var fullW = Math.max(document.documentElement.scrollWidth, vw);
       var fullH = Math.max(document.documentElement.scrollHeight, vh);
       var hideCtx = this.hideFixed();
-      var de = document.documentElement;
-      var prevOverflow = de.style.overflow;
+      // Hide scrollbars WITHOUT touching overflow: setting
+      // documentElement.style.overflow='hidden' clips the visual viewport so
+      // window.scrollTo updates scrollY but captureVisibleTab keeps grabbing
+      // the same pixels — the classic "same section repeated" bug.
+      var sbSheet = null;
+      try {
+        sbSheet = new CSSStyleSheet();
+        sbSheet.replaceSync('::-webkit-scrollbar{width:0 !important;height:0 !important;}');
+        document.adoptedStyleSheets = document.adoptedStyleSheets.concat([sbSheet]);
+      } catch (e) {}
 
       try {
-        // Minimizing layout shift: hide scrollbars during capture.
-        de.style.overflow = 'hidden';
-
         var canvas = document.createElement('canvas');
         canvas.width = Math.round(vw * scale);
         canvas.height = Math.round(fullH * scale);
@@ -305,7 +310,12 @@
         try { window.scrollTo(origX, origY); } catch (e2) {}
         throw e;
       } finally {
-        try { de.style.overflow = prevOverflow; } catch (e3) {}
+        try {
+          var sheets = document.adoptedStyleSheets.slice();
+          var sbi = sheets.indexOf(sbSheet);
+          if (sbi >= 0) sheets.splice(sbi, 1);
+          document.adoptedStyleSheets = sheets;
+        } catch (e3) {}
         this.unhideFixed(hideCtx);
       }
     },
