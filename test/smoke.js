@@ -175,7 +175,7 @@ t('overlay/modal accept pointer events (no click-through)',
 
 console.log('sidepanel architecture:');
 const manifest = JSON.parse(src('manifest.json'));
-t('manifest version 0.0.6', manifest.version === '0.0.6');
+t('manifest version 0.0.7', manifest.version === '0.0.7');
 t('debugger permission for pixel-perfect screenshots', manifest.permissions.includes('debugger'));
 t('sidePanel permission', manifest.permissions.includes('sidePanel'));
 t('side_panel default_path', manifest.side_panel && manifest.side_panel.default_path === 'src/sidepanel/panel.html');
@@ -311,10 +311,16 @@ t('update check only stamps lastCheck on success',
   (function () {
     var s = src('src/content/09-settings.js');
     var body = s.split('autoCheck: async function')[1].split('checkForUpdates: async function')[0];
+    // lastCheck is set after fetchLatestRelease resolves (not before the fetch).
     var setIdx = body.indexOf("updates.lastCheck', now)");
-    var okIdx = body.indexOf('if (!res.ok) return;');
-    return setIdx > okIdx && okIdx !== -1;
+    var fetchIdx = body.indexOf('fetchLatestRelease(repo)');
+    return setIdx > fetchIdx && fetchIdx !== -1;
   })());
+t('update check has SW proxy fallback',
+  /fetchLatestRelease/.test(src('src/content/09-settings.js')) &&
+  /CSB_FETCH/.test(src('src/content/09-settings.js')));
+t('manual check shows specific error reason',
+  /Could not check for updates' \+ reason/.test(src('src/content/09-settings.js')));
 t('update throttle is hourly, not daily',
   /now - last < 3600 \* 1000/.test(src('src/content/09-settings.js')));
 

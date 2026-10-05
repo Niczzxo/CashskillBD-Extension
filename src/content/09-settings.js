@@ -469,6 +469,35 @@
       } catch (e) {}
     },
 
+    /** Fetch the latest GitHub release. Tries a direct fetch first, then
+     * falls back to the service-worker proxy (different fetch context —
+     * helps when the page/panel context is network-restricted). Throws a
+     * specific, diagnosable error. */
+    fetchLatestRelease: async function (repo) {
+      var url = 'https://api.github.com/repos/' + repo + '/releases/latest';
+      var lastErr = null;
+      try {
+        var res = await fetch(url);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return await res.json();
+      } catch (e) {
+        lastErr = e;
+      }
+      // SW proxy fallback.
+      try {
+        var sw = await new Promise(function (resolve) {
+          try {
+            chrome.runtime.sendMessage({ type: 'CSB_FETCH', url: url }, function (r) { resolve(r); });
+          } catch (e2) { resolve(null); }
+        });
+        if (sw && sw.ok) return JSON.parse(sw.text);
+        lastErr = new Error('network unreachable' + (sw && (sw.error || sw.status) ? ' (' + (sw.error || sw.status) + ')' : ''));
+      } catch (e3) {
+        lastErr = e3;
+      }
+      throw lastErr || new Error('request failed');
+    },
+
     /** Silent check when the panel opens; pops up only for a new,
      * undismissed update. Throttled to once an hour; the timestamp is only
      * saved after a SUCCESSFUL check, so a failed check (offline / API
@@ -481,9 +510,7 @@
         var repo = String(CSB.settings.get('updates.repo', '') || '').trim();
         if (!repo || repo.split('/').length !== 2) return;
         var cur = chrome.runtime.getManifest().version;
-        var res = await fetch('https://api.github.com/repos/' + repo + '/releases/latest');
-        if (!res.ok) return;
-        var rel = await res.json();
+        var rel = await this.fetchLatestRelease(repo);
         CSB.settings.set('updates.lastCheck', now);
         var latest = String(rel.tag_name || '').trim().replace(/^[vV]/, '');
         if (!latest || compareVersions(latest, cur) <= 0) return;
@@ -511,9 +538,7 @@
       }
       this.modal('Check for updates', '<p>Checking <span class="csb-kbd">' + U.esc(repo) + '</span>…</p>');
       try {
-        var res = await fetch('https://api.github.com/repos/' + repo + '/releases/latest');
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        var rel = await res.json();
+        var rel = await this.fetchLatestRelease(repo);
         var tag = String(rel.tag_name || '').trim();
         var latest = tag.replace(/^[vV]/, '');
         var cmp = compareVersions(latest, cur);
@@ -533,8 +558,9 @@
         }
       } catch (e) {
         self.closeModals();
+        var reason = e && e.message ? ' (' + U.esc(String(e.message)) + ')' : '';
         self.modal('Check for updates',
-          '<p>Could not check for updates. Make sure <span class="csb-kbd">' + U.esc(repo) + '</span> ' +
+          '<p>Could not check for updates' + reason + '. Make sure <span class="csb-kbd">' + U.esc(repo) + '</span> ' +
           'exists, has at least one release, and you’re online.</p>');
       }
     }
