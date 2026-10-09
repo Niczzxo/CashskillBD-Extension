@@ -176,7 +176,7 @@ t('overlay/modal accept pointer events (no click-through)',
 
 console.log('sidepanel architecture:');
 const manifest = JSON.parse(src('manifest.json'));
-t('manifest version 0.1.5', manifest.version === '0.1.5');
+t('manifest version 0.1.6', manifest.version === '0.1.6');
 t('debugger permission for pixel-perfect screenshots', manifest.permissions.includes('debugger'));
 t('sidePanel permission', manifest.permissions.includes('sidePanel'));
 t('side_panel default_path', manifest.side_panel && manifest.side_panel.default_path === 'src/sidepanel/panel.html');
@@ -479,6 +479,10 @@ t('typing installs send blocker on run',
   /installSendBlocker\(\)/.test(src('src/content/04-typing.js')));
 t('typing blocks Enter keydown during typing',
   /e\.key === 'Enter'/.test(src('src/content/04-typing.js')));
+t('typing blocks Enter keypress during typing',
+  /'keypress', sendBlocker/.test(src('src/content/04-typing.js')));
+t('typing blocks Enter keyup during typing',
+  /'keyup', sendBlocker/.test(src('src/content/04-typing.js')));
 t('typing blocks form submit during typing',
   /e\.type === 'submit'/.test(src('src/content/04-typing.js')));
 t('typing removes send blocker on stop/complete',

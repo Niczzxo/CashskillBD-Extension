@@ -50,16 +50,17 @@
     });
   }
 
-  // Safety net: while typing is active, block Enter keydown and form
-  // submit at the capture phase. This guarantees auto-typing NEVER sends
-  // a message or submits a form by itself — the user always sends manually.
-  // Installed on run(), removed on stop()/complete().
+  // Safety net: while typing is active, block Enter keydown/keypress/keyup
+  // and form submit at the capture phase. This guarantees auto-typing NEVER
+  // sends a message or submits a form by itself — the user always sends
+  // manually. Installed on run(), removed on stop()/complete().
   var sendBlocker = null;
   function installSendBlocker() {
     if (sendBlocker) return;
     sendBlocker = function (e) {
       if (!typing.isActive()) return;
-      if (e.type === 'keydown' && (e.key === 'Enter' || e.keyCode === 13)) {
+      if ((e.type === 'keydown' || e.type === 'keypress' || e.type === 'keyup') &&
+          (e.key === 'Enter' || e.keyCode === 13)) {
         e.stopImmediatePropagation();
         e.preventDefault();
       } else if (e.type === 'submit') {
@@ -68,11 +69,15 @@
       }
     };
     document.addEventListener('keydown', sendBlocker, true);
+    document.addEventListener('keypress', sendBlocker, true);
+    document.addEventListener('keyup', sendBlocker, true);
     document.addEventListener('submit', sendBlocker, true);
   }
   function removeSendBlocker() {
     if (!sendBlocker) return;
     document.removeEventListener('keydown', sendBlocker, true);
+    document.removeEventListener('keypress', sendBlocker, true);
+    document.removeEventListener('keyup', sendBlocker, true);
     document.removeEventListener('submit', sendBlocker, true);
     sendBlocker = null;
   }
