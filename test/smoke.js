@@ -175,7 +175,7 @@ t('overlay/modal accept pointer events (no click-through)',
 
 console.log('sidepanel architecture:');
 const manifest = JSON.parse(src('manifest.json'));
-t('manifest version 0.1.2', manifest.version === '0.1.2');
+t('manifest version 0.1.3', manifest.version === '0.1.3');
 t('debugger permission for pixel-perfect screenshots', manifest.permissions.includes('debugger'));
 t('sidePanel permission', manifest.permissions.includes('sidePanel'));
 t('side_panel default_path', manifest.side_panel && manifest.side_panel.default_path === 'src/sidepanel/panel.html');
@@ -466,6 +466,14 @@ t('panel auto-copy uses copyAfterCapture/autoCopyArea',
   /autoCopyArea/.test(src('src/sidepanel/ui-screenshot.js')));
 t('panel copy uses ClipboardItem in extension context',
   /copyFromDataUrl/.test(src('src/sidepanel/ui-screenshot.js')) && /navigator\.clipboard\.write/.test(src('src/sidepanel/ui-screenshot.js')));
+
+console.log('typing never sends:');
+t('typeEnter does not dispatch Enter keydown',
+  !/keyEvent\('keydown', 'Enter'/.test(src('src/content/04-typing.js')));
+t('typeEnter does not dispatch Enter keyup',
+  !/keyEvent\('keyup', 'Enter'/.test(src('src/content/04-typing.js')));
+t('typeEnter inserts newline via InputEvent only',
+  /typeEnter: function[\s\S]*?insertParagraph/.test(src('src/content/04-typing.js')));
 t('content script no longer auto-copies (panel handles it)',
   !/copyAfterCapture.*self\.copy/.test(src('src/content/07-screenshot.js')));
 t('area result flags area:true for panel',

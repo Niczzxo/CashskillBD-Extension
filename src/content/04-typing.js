@@ -323,8 +323,12 @@
 
     typeEnter: function (target) {
       var tag = (target.tagName || '').toUpperCase();
-      target.dispatchEvent(keyEvent('keydown', 'Enter', 'Enter'));
-      target.dispatchEvent(keyEvent('keypress', 'Enter', 'Enter'));
+      // SAFETY: Do NOT dispatch synthetic Enter keyboard events here.
+      // Sites (chat apps, forms) listen for Enter keydown to SEND/SUBMIT.
+      // Dispatching a fake Enter would auto-send the message — the user
+      // must always send manually. We only insert the newline character
+      // via InputEvent/execCommand, which updates the field value without
+      // triggering any send/submit handler.
       if (target.isContentEditable) {
         this.insertEditable(target, '\n');
       } else if (tag === 'TEXTAREA') {
@@ -333,12 +337,12 @@
           bubbles: true, cancelable: true, inputType: 'insertParagraph', data: '\n'
         }));
       } else {
-        // Single-line input: commit as input event (no form submit).
+        // Single-line input: insert newline via input event only.
+        // Never dispatch Enter keydown — that would submit forms / send chats.
         target.dispatchEvent(new InputEvent('input', {
           bubbles: true, cancelable: true, inputType: 'insertLineBreak', data: '\n'
         }));
       }
-      target.dispatchEvent(keyEvent('keyup', 'Enter', 'Enter'));
     },
 
     insertEditable: function (ed, text) {
