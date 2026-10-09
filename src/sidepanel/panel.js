@@ -317,6 +317,15 @@
   function safeBuild(name, fn) {
     try { fn(); } catch (e) {
       try { console.warn('[CashSkillBD] pane build failed:', name, e); } catch (e2) {}
+      // Show the error in the pane so it can be diagnosed (instead of blank).
+      try {
+        var p = panesEl[name];
+        if (p) {
+          p.innerHTML = '<div style="padding:20px;color:#ff6b6b;">' +
+            '<b>Pane failed to load:</b> ' + String((e && e.message) || e) +
+            '<br><small>Please report this error.</small></div>';
+        }
+      } catch (e3) {}
     }
   }
 
