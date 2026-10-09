@@ -94,7 +94,7 @@
     "debugger"
   ],
   "short_name": "CashSkill",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "web_accessible_resources": [
     {
       "matches": [

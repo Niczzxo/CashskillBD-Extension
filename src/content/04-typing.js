@@ -50,6 +50,33 @@
     });
   }
 
+  // Safety net: while typing is active, block Enter keydown and form
+  // submit at the capture phase. This guarantees auto-typing NEVER sends
+  // a message or submits a form by itself — the user always sends manually.
+  // Installed on run(), removed on stop()/complete().
+  var sendBlocker = null;
+  function installSendBlocker() {
+    if (sendBlocker) return;
+    sendBlocker = function (e) {
+      if (!typing.isActive()) return;
+      if (e.type === 'keydown' && (e.key === 'Enter' || e.keyCode === 13)) {
+        e.stopImmediatePropagation();
+        e.preventDefault();
+      } else if (e.type === 'submit') {
+        e.stopImmediatePropagation();
+        e.preventDefault();
+      }
+    };
+    document.addEventListener('keydown', sendBlocker, true);
+    document.addEventListener('submit', sendBlocker, true);
+  }
+  function removeSendBlocker() {
+    if (!sendBlocker) return;
+    document.removeEventListener('keydown', sendBlocker, true);
+    document.removeEventListener('submit', sendBlocker, true);
+    sendBlocker = null;
+  }
+
   var typing = {
     state: 'IDLE',       // IDLE | READY | TYPING | STOPPED | COMPLETED | ERROR
     text: '',
@@ -209,6 +236,7 @@
       this.state = 'TYPING';
       this.charIndex = 0;
       this.target = target;
+      installSendBlocker();
       try { target.focus({ preventScroll: false }); } catch (e) { try { target.focus(); } catch (e2) {} }
 
       this.setStatus('busy', 'Starting…');
@@ -426,6 +454,7 @@
 
     stop: function (silent) {
       this.disarmFocusWait();
+      removeSendBlocker();
       if (this.state === 'TYPING') {
         this.runId++; // invalidate the loop
         if (this.timer) { clearTimeout(this.timer); this.timer = null; }
@@ -440,6 +469,7 @@
 
     complete: function () {
       this.state = 'COMPLETED';
+      removeSendBlocker();
       this.charIndex = this.text.length;
       this.updateProgress();
       this.setStatus('ok', 'Typing Completed — 100%');
