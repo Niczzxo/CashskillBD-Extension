@@ -115,13 +115,9 @@
     },
 
     copy: function () {
-      var self = this;
-      CSB.bus.cmd('shot.copy').then(function (r) {
-        if (r && r.copied) CSB.panel.toast('Screenshot copied to clipboard');
-        else self.setStatus('err', 'Clipboard access is unavailable.');
-      }).catch(function (e) {
-        self.setStatus('err', (e && e.message) || 'Copy failed.');
-      });
+      // Panel-side copy: more reliable than the tab's content script
+      // (clipboard write needs extension context after async capture).
+      this.copyFromDataUrl(false);
     },
 
     download: function () {
@@ -147,10 +143,46 @@
         this.busy = false;
         if (this._watchdog) { clearTimeout(this._watchdog); this._watchdog = null; }
         this.hasShot = true;
-        if (d.dataUrl) this.showPreview(d.dataUrl);
+        if (d.dataUrl) {
+          this.dataUrl = d.dataUrl;
+          this.showPreview(d.dataUrl);
+          // Auto-copy after capture: do it here in the panel (extension)
+          // context — clipboard writes from the tab's content script are
+          // unreliable after async capture (user activation expires).
+          // Full-page uses copyAfterCapture; area uses autoCopyArea.
+          var wantCopy = d.area
+            ? CSB.settings.get('screenshot.autoCopyArea', true)
+            : CSB.settings.get('screenshot.copyAfterCapture', false);
+          if (wantCopy) {
+            this.copyFromDataUrl(true);
+          }
+        }
         this.render();
       }
-    }
+    },
+
+    copyFromDataUrl: async function (silent) {
+      var self = this;
+      var dataUrl = this.dataUrl;
+      if (!dataUrl) { if (!silent) self.setStatus('err', 'Capture a screenshot first.'); return false; }
+      try {
+        var res = await fetch(dataUrl);
+        var blob = await res.blob();
+        if (!blob || !blob.size) throw new Error('encode failed');
+        var mime = blob.type || 'image/png';
+        await navigator.clipboard.write([new ClipboardItem({ [mime]: blob })]);
+        if (!silent) CSB.panel.toast('Screenshot copied to clipboard');
+        else CSB.panel.toast('Screenshot copied to clipboard');
+        return true;
+      } catch (e) {
+        var msg = (e && e.name === 'NotAllowedError')
+          ? 'Clipboard blocked — click COPY again.'
+          : 'Clipboard access is unavailable.';
+        if (!silent) self.setStatus('err', msg);
+        else self.setStatus('err', msg);
+        return false;
+      }
+    },
   };
 
   CSB.shotPanelUI = ui;

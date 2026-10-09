@@ -175,7 +175,7 @@ t('overlay/modal accept pointer events (no click-through)',
 
 console.log('sidepanel architecture:');
 const manifest = JSON.parse(src('manifest.json'));
-t('manifest version 0.1', manifest.version === '0.1');
+t('manifest version 0.1.1', manifest.version === '0.1.1');
 t('debugger permission for pixel-perfect screenshots', manifest.permissions.includes('debugger'));
 t('sidePanel permission', manifest.permissions.includes('sidePanel'));
 t('side_panel default_path', manifest.side_panel && manifest.side_panel.default_path === 'src/sidepanel/panel.html');
@@ -458,6 +458,18 @@ t('SW clears device metrics override',
   /Emulation\.clearDeviceMetricsOverride/.test(src('src/background/service-worker.js')));
 t('content sends page dimensions for emulation',
   /fullW: fullW, fullH: fullH/.test(src('src/content/07-screenshot.js')));
+
+console.log('panel-side clipboard:');
+t('panel stores dataUrl from shot.result',
+  /this\.dataUrl = d\.dataUrl/.test(src('src/sidepanel/ui-screenshot.js')));
+t('panel auto-copy uses copyAfterCapture/autoCopyArea',
+  /autoCopyArea/.test(src('src/sidepanel/ui-screenshot.js')));
+t('panel copy uses ClipboardItem in extension context',
+  /copyFromDataUrl/.test(src('src/sidepanel/ui-screenshot.js')) && /navigator\.clipboard\.write/.test(src('src/sidepanel/ui-screenshot.js')));
+t('content script no longer auto-copies (panel handles it)',
+  !/copyAfterCapture.*self\.copy/.test(src('src/content/07-screenshot.js')));
+t('area result flags area:true for panel',
+  /area: true/.test(src('src/content/07-screenshot.js')));
 t('manual check shows specific error reason',
   /Could not check for updates' \+ reason/.test(src('src/content/09-settings.js')));
 t('update throttle is hourly, not daily',

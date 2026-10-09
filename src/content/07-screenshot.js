@@ -131,7 +131,9 @@
         if (CSB.settings.get('notifications.screenshotCompleted', true)) {
           U.notify('CashSkillBD', 'Full-page screenshot captured.');
         }
-        if (CSB.settings.get('screenshot.copyAfterCapture', false)) self.copy(true);
+        // Auto-copy is handled panel-side (ui-screenshot.js onEvent) where
+        // clipboard writes are reliable. Do NOT copy here — the tab's
+        // content script loses user activation after async capture.
         if (CSB.settings.get('screenshot.autoDownload', false)) self.download();
       };
 
@@ -592,15 +594,12 @@
         this.dataUrl = canvas.toDataURL('image/png');
         this.state = 'PREVIEW';
         this.showPreview();
-        if (CSB.bridge) { try { CSB.bridge.emit('shot.result', { dataUrl: this.dataUrl, w: sw, h: sh }); } catch (e) {} }
+        if (CSB.bridge) { try { CSB.bridge.emit('shot.result', { dataUrl: this.dataUrl, w: sw, h: sh, area: true }); } catch (e) {} }
         this.setStatus('ok', 'Area captured (' + sw + ' × ' + sh + ' px).');
         if (CSB.settings.get('notifications.screenshotCompleted', true)) {
           U.notify('CashSkillBD', 'Area screenshot captured.');
         }
-        if (CSB.settings.get('screenshot.autoCopyArea', true)) {
-          var copied = await this.copy(true);
-          if (copied) CSB.panel.toast('Area screenshot copied to clipboard');
-        }
+        // Auto-copy handled panel-side (see ui-screenshot.js onEvent).
       } catch (e) {
         this.state = 'ERROR';
         this.setStatus('err', (e && e.message) || 'Unable to capture the area. Please try again.');
