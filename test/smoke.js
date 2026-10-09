@@ -86,7 +86,8 @@ t('fmtDate shape', /^\d{4}-\d{2}-\d{2}$/.test(CSB.util.fmtDate(new Date(2026, 9,
 t('fmtTime shape', /^\d{2}-\d{2}-\d{2}$/.test(CSB.util.fmtTime(new Date(2026, 9, 5, 9, 4, 7))));
 
 console.log('storage:');
-t('defaults present', CSB.settings.get('typing.defaultSpeed') === 'normal');
+t('defaults present', CSB.settings.get('typing.defaultSpeed') === 'slow');
+t('default mistake rate is custom 7%', CSB.settings.get('typing.defaultMistakeRate') === 'custom' && CSB.settings.get('typing.customMistakeRate') === 7);
 t('set/get nested', (() => { CSB.settings.set('typing.customInterval', 120); return CSB.settings.get('typing.customInterval') === 120; })());
 t('missing path fallback', CSB.settings.get('nope.nada', 'fb') === 'fb');
 t('accent default red', CSB.settings.effectiveAccent() === '#E03131');
@@ -97,9 +98,9 @@ CSB.typing.setText('hello beautiful world');
 const c = CSB.typing.counts();
 t('char count', c.chars === 21);
 t('word count', c.words === 3);
-t('speed label normal', CSB.typing.speedLabel() === 'Normal');
-t('baseInterval custom clamped', (() => { CSB.settings.set('typing.defaultSpeed', 'custom'); CSB.settings.set('typing.customInterval', 5000); const v = CSB.typing.baseInterval(); CSB.settings.set('typing.defaultSpeed', 'normal'); CSB.settings.set('typing.customInterval', 70); return v === 1000; })());
-t('mistake rate 2%', CSB.typing.mistakeRate() === 2);
+t('speed label slow (default)', CSB.typing.speedLabel() === 'Slow');
+t('baseInterval custom clamped', (() => { CSB.settings.set('typing.defaultSpeed', 'custom'); CSB.settings.set('typing.customInterval', 5000); const v = CSB.typing.baseInterval(); CSB.settings.set('typing.defaultSpeed', 'slow'); CSB.settings.set('typing.customInterval', 70); return v === 1000; })());
+t('mistake rate 7% (default)', CSB.typing.mistakeRate() === 7);
 t('correction delay 300', CSB.typing.correctionDelay() === 300);
 
 console.log('translate:');
@@ -175,7 +176,7 @@ t('overlay/modal accept pointer events (no click-through)',
 
 console.log('sidepanel architecture:');
 const manifest = JSON.parse(src('manifest.json'));
-t('manifest version 0.1.4', manifest.version === '0.1.4');
+t('manifest version 0.1.5', manifest.version === '0.1.5');
 t('debugger permission for pixel-perfect screenshots', manifest.permissions.includes('debugger'));
 t('sidePanel permission', manifest.permissions.includes('sidePanel'));
 t('side_panel default_path', manifest.side_panel && manifest.side_panel.default_path === 'src/sidepanel/panel.html');

@@ -27,11 +27,11 @@
       allowResize: true
     },
     typing: {
-      defaultSpeed: 'normal',   // slow | normal | fast | custom
+      defaultSpeed: 'slow',   // slow | normal | fast | custom
       customInterval: 70,       // ms, 20..1000
       mistakeSimulation: true,
-      defaultMistakeRate: '2',  // 0 | 1 | 2 | 5 | custom
-      customMistakeRate: 2,     // %
+      defaultMistakeRate: 'custom',  // 0 | 1 | 2 | 5 | custom
+      customMistakeRate: 7,     // %
       correctionDelay: '300',   // 100 | 200 | 300 | 500 | custom
       customCorrectionDelay: 300, // ms
       typingVariation: true,
