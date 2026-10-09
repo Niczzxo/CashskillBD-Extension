@@ -171,15 +171,21 @@
         if (!blob || !blob.size) throw new Error('encode failed');
         var mime = blob.type || 'image/png';
         await navigator.clipboard.write([new ClipboardItem({ [mime]: blob })]);
-        if (!silent) CSB.panel.toast('Screenshot copied to clipboard');
-        else CSB.panel.toast('Screenshot copied to clipboard');
+        CSB.panel.toast('Screenshot copied to clipboard');
         return true;
       } catch (e) {
-        var msg = (e && e.name === 'NotAllowedError')
-          ? 'Clipboard blocked — click COPY again.'
-          : 'Clipboard access is unavailable.';
-        if (!silent) self.setStatus('err', msg);
-        else self.setStatus('err', msg);
+        // Chrome requires user activation for clipboard writes. Auto-copy
+        // (triggered by capture completion, not a click) gets NotAllowedError.
+        // Don't scare the user with a red error for auto-copy — just hint.
+        if (e && e.name === 'NotAllowedError') {
+          if (silent) {
+            CSB.panel.toast('Click COPY to copy the screenshot');
+          } else {
+            self.setStatus('err', 'Clipboard blocked — click COPY again.');
+          }
+        } else {
+          self.setStatus('err', 'Clipboard access is unavailable.');
+        }
         return false;
       }
     },
