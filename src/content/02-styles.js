@@ -180,12 +180,10 @@ CSB.CSS = `
 .csb-tab:focus-visible { outline: 2px solid var(--csb-accent); outline-offset: 2px; }
 
 /* ============ body / cards ============ */
-/* Scrollbars are hidden for a clean premium look — scrolling still works
-   via mouse wheel, trackpad, touch, and keyboard. */
-.csb-body { flex: 1 1 auto; overflow-y: auto; padding: 16px 14px 24px; scrollbar-width: none; -ms-overflow-style: none; }
-.csb-body::-webkit-scrollbar { width: 0; height: 0; display: none; }
-.csb-sp-root *::-webkit-scrollbar { width: 0; height: 0; display: none; }
-.csb-sp-root * { scrollbar-width: none; -ms-overflow-style: none; }
+.csb-body { flex: 1 1 auto; overflow-y: auto; padding: 16px 14px 24px; scrollbar-width: thin; scrollbar-color: var(--csb-border) transparent; }
+.csb-body::-webkit-scrollbar { width: 8px; }
+.csb-body::-webkit-scrollbar-thumb { background: var(--csb-border); border-radius: 8px; }
+.csb-body::-webkit-scrollbar-thumb:hover { background: var(--csb-fg-faint); }
 .csb-pane { display: none; }
 .csb-pane.csb-pane-active { display: block; }
 @keyframes csb-fade { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
