@@ -231,7 +231,7 @@
       b.classList.toggle('csb-active', b.dataset.tab === id);
     });
     TABS.forEach(function (t) {
-      if (panesEl[t.id]) panesEl[t.id].classList.toggle('csb-active', t.id === id);
+      if (panesEl[t.id]) panesEl[t.id].classList.toggle('csb-pane-active', t.id === id);
     });
     if (save && CSB.settings.get('panel.rememberLastTab', true)) {
       try { chrome.storage.session.set({ csb_last_tab: id }); } catch (e) {}

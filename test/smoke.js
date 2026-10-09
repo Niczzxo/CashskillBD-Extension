@@ -176,7 +176,7 @@ t('overlay/modal accept pointer events (no click-through)',
 
 console.log('sidepanel architecture:');
 const manifest = JSON.parse(src('manifest.json'));
-t('manifest version 0.1.7', manifest.version === '0.1.7');
+t('manifest version 0.1.8', manifest.version === '0.1.8');
 t('debugger permission for pixel-perfect screenshots', manifest.permissions.includes('debugger'));
 t('sidePanel permission', manifest.permissions.includes('sidePanel'));
 t('side_panel default_path', manifest.side_panel && manifest.side_panel.default_path === 'src/sidepanel/panel.html');
@@ -471,6 +471,8 @@ t('panel copy uses ClipboardItem in extension context',
 t('scrollbars hidden for premium look',
   /scrollbar-width:\s*none/.test(src('src/content/02-styles.js')) &&
   /\.csb-sp-root \*::-webkit-scrollbar/.test(src('src/content/02-styles.js')));
+t('pane toggle uses csb-pane-active (matches CSS)',
+  /classList\.toggle\('csb-pane-active'/.test(src('src/sidepanel/panel.js')));
 console.log('typing never sends:');
 t('typeEnter does not dispatch Enter keydown',
   !/keyEvent\('keydown', 'Enter'/.test(src('src/content/04-typing.js')));
