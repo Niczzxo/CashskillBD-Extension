@@ -163,6 +163,7 @@
         var base = chrome.runtime.getURL('src/lib/tesseract');
         var res = await Promise.race([
           Tesseract.recognize(imageDataUrl, 'eng', {
+            workerPath: base + '/worker.min.js',
             corePath: base + '/tesseract-core.wasm.js',
             langPath: base + '/lang/',
             logger: function () {}
