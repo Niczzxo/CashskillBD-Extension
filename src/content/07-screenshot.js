@@ -536,7 +536,7 @@
         window.removeEventListener('pointermove', onMove, true);
         window.removeEventListener('pointerup', onUp, true);
         window.removeEventListener('keydown', onKey, true);
-        window.removeEventListener('wheel', onWheel, { passive: true });
+        window.removeEventListener('wheel', onWheel);
         window.removeEventListener('scroll', onScroll, true);
         self.render();
       }
@@ -562,16 +562,14 @@
         updateBox(cxDoc, cyDoc);
       }
       function onWheel(e) {
-        // Allow page scroll during drag; update box after scroll
         if (!dragging) return;
-        // Let the scroll happen, then update box on next frame
-        requestAnimationFrame(function () {
-          if (!dragging) return;
-          // Use last known mouse position (viewport coords stay same, doc coords change)
-          var cxDoc = lastCX + window.scrollX;
-          var cyDoc = lastCY + window.scrollY;
-          updateBox(cxDoc, cyDoc);
-        });
+        // Manually scroll the page (overlay may block native wheel scroll)
+        try { e.preventDefault(); } catch (err) {}
+        window.scrollBy(0, e.deltaY);
+        // Update box after scroll
+        var cxDoc = lastCX + window.scrollX;
+        var cyDoc = lastCY + window.scrollY;
+        updateBox(cxDoc, cyDoc);
       }
       var lastCX = 0, lastCY = 0;
       function onScroll() {
@@ -610,8 +608,8 @@
       }, true);
       window.addEventListener('pointerup', onUp, true);
       window.addEventListener('keydown', onKey, true);
-      // Wheel and scroll listeners for extending selection beyond viewport
-      window.addEventListener('wheel', onWheel, { passive: true });
+      // Wheel listener (non-passive so we can preventDefault and control scroll)
+      window.addEventListener('wheel', onWheel, { passive: false });
       window.addEventListener('scroll', onScroll, true);
     },
 
@@ -673,6 +671,18 @@
         this.dataUrl = canvas.toDataURL('image/png');
         this.state = 'PREVIEW';
         this.showPreview();
+        // Try immediate copy in content script (mouseup activation may still be valid).
+        // Panel will also try via service worker as fallback.
+        if (CSB.settings.get('screenshot.autoCopyArea', true)) {
+          try {
+            var blob = await (await fetch(this.dataUrl)).blob();
+            var mime = blob.type || 'image/png';
+            await navigator.clipboard.write([new ClipboardItem({ [mime]: blob })]);
+            CSB.panel.toast('Screenshot copied');
+          } catch (copyErr) {
+            // Activation expired; panel will try via service worker
+          }
+        }
         if (CSB.bridge) { try { CSB.bridge.emit('shot.result', { dataUrl: this.dataUrl, w: sw, h: sh, area: true }); } catch (e) {} }
         this.setStatus('ok', 'Area captured (' + sw + ' × ' + sh + ' px).');
         if (CSB.settings.get('notifications.screenshotCompleted', true)) {

@@ -138,6 +138,13 @@
         paintDoc(lastCX + window.scrollX, lastCY + window.scrollY);
       }
 
+      function onWheel(e) {
+        if (!dragging) return;
+        try { e.preventDefault(); } catch (err) {}
+        window.scrollBy(0, e.deltaY);
+        paintDoc(lastCX + window.scrollX, lastCY + window.scrollY);
+      }
+
       function onUp(e) {
         if (!dragging) return;
         dragging = false;
@@ -175,6 +182,7 @@
         window.removeEventListener('pointerup', onUp, true);
         window.removeEventListener('pointercancel', onCancel, true);
         window.removeEventListener('scroll', onScroll, true);
+        window.removeEventListener('wheel', onWheel);
         document.removeEventListener('keydown', onKey, true);
         if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
         if (hint.parentNode) hint.parentNode.removeChild(hint);
@@ -185,6 +193,7 @@
       window.addEventListener('pointerup', onUp, true);
       window.addEventListener('pointercancel', onCancel, true);
       window.addEventListener('scroll', onScroll, true);
+      window.addEventListener('wheel', onWheel, { passive: false });
       document.addEventListener('keydown', onKey, true);
 
       this.overlay = overlay;
