@@ -84,6 +84,8 @@
             if (self0.state === 'idle') {
               self0._detectTries = 0;
               self0.detectedLang = null;
+              self0._detectionDone = false;
+              self0._noTextWarned = false;
               self0.tryDetect();
             }
           };
@@ -100,14 +102,14 @@
           this._lateHook = true;
           var moTimer = null;
           var mo = new MutationObserver(function () {
-            if (self0.state !== 'idle' || self0.detectedLang) {
+            if (self0.state === 'translated' || self0._detectionDone) {
               try { mo.disconnect(); } catch (e) {}
               return;
             }
             if (moTimer) return; // debounced
             moTimer = setTimeout(function () {
               moTimer = null;
-              if (self0.state !== 'idle' || self0.detectedLang) return;
+              if (self0.state === 'translated' || self0._detectionDone) return;
               if (self0.sampleText().length >= 60) {
                 try { mo.disconnect(); } catch (e2) {}
                 self0._detectTries = 0;
@@ -280,6 +282,7 @@
     },
 
     onDetected: function (lang) {
+      this._detectionDone = true;
       lang = String(lang || '').toLowerCase().split(/[-_]/)[0];
       var target = this.targetLang();
       if (!lang || lang === 'auto' || lang === 'und' || lang === target) return;
@@ -626,6 +629,7 @@
         }
       }
       var source = this.detectedLang || 'auto';
+      try {
       this.state = 'translating';
       this._translatingSince = Date.now();
       this.emitState();
@@ -644,8 +648,16 @@
       var total = items.length;
       if (!total) {
         this.state = 'idle';
+        this._translatingSince = 0;
         this.hideBar();
-        this.toast('No translatable text found on this page');
+        // Nothing collectible yet (slow page) — allow the late-content
+        // observer to retry the full cycle when more text arrives.
+        this.detectedLang = null;
+        this._detectionDone = false;
+        if (!this._noTextWarned) {
+          this._noTextWarned = true;
+          this.toast('No translatable text found on this page');
+        }
         return;
       }
       var batches = this.makeBatches(items);
@@ -701,6 +713,17 @@
         if (CSB.settings.get('notifications.translationCompleted', true)) {
           U.notify('CashSkillBD', 'Page translated to ' + CSB.translate.langName(target) + '.');
         }
+      }
+      } catch (e) {
+        // Never leave the engine wedged: an unexpected synchronous error
+        // resets state so the next auto/manual attempt can run.
+        try {
+          this._translatingSince = 0;
+          this.state = 'idle';
+          this.emitState();
+          this.renderBar('prompt');
+          this.toast('Translation failed (' + String((e && e.message) || e) + ')');
+        } catch (e2) {}
       }
     },
 

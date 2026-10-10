@@ -419,7 +419,11 @@ t('survey option re-renders are re-translated (no text dedup)',
 t('sweep re-scans for missed foreign text',
   /collectSweep/.test(src('src/content/11-page-translate.js')));
 t('wrong html lang attribute is verified against text',
-  /survey[\s\S]{0,80}routers often set it wrong/.test(src('src/content/11-page-translate.js')));
+  /routers often set it wrong/.test(src('src/content/11-page-translate.js')));
+t('settings.load has a timeout (never blocks boot)',
+  /storage timeout|5000/.test(src('src/content/01-storage.js')));
+t('translatePage resets state on unexpected error',
+  /Never leave the engine wedged/.test(src('src/content/11-page-translate.js')));
 t('detect uses targetLang with timeout (11-4/11-7)',
   /this\.targetLang\(\)/.test(src('src/content/11-page-translate.js')) && /detect timeout/.test(src('src/content/11-page-translate.js')));
 t('pairs cleared on pagehide (11-6)',

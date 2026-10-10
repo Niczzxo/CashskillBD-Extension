@@ -136,8 +136,24 @@
 
     load: async function () {
       try {
-        var res = await chrome.storage.local.get(STORAGE_KEY);
-        this.data = deepMerge(clone(DEFAULTS), res[STORAGE_KEY] || {});
+        // Never let a hung storage read block the boot (detection etc.):
+        // after 5s continue with defaults, then merge the real data late.
+        var got = false;
+        var res = await Promise.race([
+          chrome.storage.local.get(STORAGE_KEY).then(function (r) { got = true; return r; }),
+          new Promise(function (resolve) { setTimeout(function () { resolve(null); }, 5000); })
+        ]);
+        if (got && res) {
+          this.data = deepMerge(clone(DEFAULTS), res[STORAGE_KEY] || {});
+        } else {
+          this.data = clone(DEFAULTS);
+          var self = this;
+          chrome.storage.local.get(STORAGE_KEY).then(function (r2) {
+            if (r2 && r2[STORAGE_KEY]) {
+              try { self.data = deepMerge(self.data, r2[STORAGE_KEY]); } catch (e) {}
+            }
+          }).catch(function () {});
+        }
       } catch (e) {
         this.data = clone(DEFAULTS);
       }
