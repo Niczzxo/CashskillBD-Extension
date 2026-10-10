@@ -82,11 +82,16 @@
 
     copy: function () {
       var self = this;
-      CSB.bus.cmd('ocr.copy').then(function (r) {
-        if (r && r.copied) CSB.panel.toast('OCR text copied');
-        else self.setStatus('err', 'Nothing to copy yet.');
+      // Copy in the PANEL context (not content script) — the user's click
+      // gives us clipboard permission here.
+      CSB.bus.cmd('ocr.state').then(function (r) {
+        var text = (r && r.text) || '';
+        if (!text) { self.setStatus('err', 'Nothing to copy yet.'); return; }
+        return navigator.clipboard.writeText(text).then(function () {
+          CSB.panel.toast('OCR text copied');
+        });
       }).catch(function (e) {
-        self.setStatus('err', (e && e.message) || 'Copy failed.');
+        self.setStatus('err', 'Clipboard blocked — click COPY TEXT again.');
       });
     },
 

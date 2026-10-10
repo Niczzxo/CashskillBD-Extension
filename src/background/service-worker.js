@@ -237,12 +237,19 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   if (msg.type === 'CSB_LOAD_TESSERACT') {
-    const tabId = sender.tab && sender.tab.id;
-    if (tabId == null) { sendResponse({ ok: false, error: 'no tab' }); return false; }
-    ensureTesseract(tabId).then(
-      (ok) => sendResponse({ ok }),
-      (err) => sendResponse({ ok: false, error: String((err && err.message) || err) })
-    );
+    var tabId = sender.tab && sender.tab.id;
+    var tabIdPromise = (tabId != null)
+      ? Promise.resolve(tabId)
+      : chrome.tabs.query({ active: true, lastFocusedWindow: true }).then(function (tabs) {
+          return (tabs && tabs[0] && tabs[0].id != null) ? tabs[0].id : null;
+        }).catch(function () { return null; });
+    tabIdPromise.then(function (id) {
+      if (id == null) { sendResponse({ ok: false, error: 'no tab' }); return; }
+      ensureTesseract(id).then(
+        function (ok) { sendResponse({ ok: !!ok }); },
+        function (err) { sendResponse({ ok: false, error: String((err && err.message) || err) }); }
+      );
+    });
     return true; // async response
   }
 
