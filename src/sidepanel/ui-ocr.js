@@ -19,30 +19,19 @@
       var card = U2.el('div', 'csb-card');
       card.innerHTML =
         '<h3>Extract text from any visible region</h3>' +
-        '<p class="csb-hint" style="margin:0 0 10px">Works on images, canvas text, and non-selectable content.</p>' +
+        '<p class="csb-hint" style="margin:0 0 10px">Select an area — the text is copied automatically. Works on images, canvas text, and non-selectable content.</p>' +
         '<button class="csb-btn csb-btn-primary csb-btn-block" id="csb-ocr-go" type="button">🔤 START SELECTION</button>' +
         '<div class="csb-status" id="csb-ocr-status"><span class="csb-dot"></span><span>Ready</span></div>' +
-        '<h3 style="margin-top:12px">Detected text</h3>' +
-        '<div class="csb-result" id="csb-ocr-result" aria-live="polite"></div>' +
-        '<div class="csb-row" style="margin-top:10px">' +
-          '<button class="csb-btn csb-btn-ghost" id="csb-ocr-copy" type="button" style="flex:1">COPY TEXT</button>' +
-          '<button class="csb-btn csb-btn-ghost" id="csb-ocr-clear" type="button" style="flex:1">CLEAR</button>' +
-        '</div>' +
         '<button class="csb-btn csb-btn-ghost csb-btn-block" id="csb-ocr-fullpage" type="button" style="margin-top:10px">📄 COPY FULL PAGE TEXT</button>';
       pane.appendChild(card);
 
       var q = function (sel) { return pane.querySelector(sel); };
       this.el = {
         startBtn: q('#csb-ocr-go'),
-        copyBtn: q('#csb-ocr-copy'),
-        clearBtn: q('#csb-ocr-clear'),
-        status: q('#csb-ocr-status'),
-        result: q('#csb-ocr-result')
+        status: q('#csb-ocr-status')
       };
 
       q('#csb-ocr-go').addEventListener('click', function () { self.select(); });
-      q('#csb-ocr-copy').addEventListener('click', function () { self.copy(); });
-      q('#csb-ocr-clear').addEventListener('click', function () { self.clear(); });
       q('#csb-ocr-fullpage').addEventListener('click', function () { self.copyFullPage(); });
       this.render();
     },
@@ -82,21 +71,6 @@
       });
     },
 
-    copy: function () {
-      var self = this;
-      // Copy in the PANEL context (not content script) — the user's click
-      // gives us clipboard permission here.
-      CSB.bus.cmd('ocr.state').then(function (r) {
-        var text = (r && r.text) || '';
-        if (!text) { self.setStatus('err', 'Nothing to copy yet.'); return; }
-        return navigator.clipboard.writeText(text).then(function () {
-          CSB.panel.toast('OCR text copied');
-        });
-      }).catch(function (e) {
-        self.setStatus('err', 'Clipboard blocked — click COPY TEXT again.');
-      });
-    },
-
     copyFullPage: function () {
       var self = this;
       this.setStatus('busy', 'Copying full page text…');
@@ -118,7 +92,6 @@
     clear: function () {
       CSB.bus.cmd('ocr.clear').catch(function () {});
       if (this.el) {
-        this.el.result.textContent = '';
         this.setStatus('', 'Ready');
       }
     },
@@ -140,30 +113,22 @@
       } else if (evt === 'ocr.result') {
         this.busy = false;
         if (this._watchdog) { clearTimeout(this._watchdog); this._watchdog = null; }
-        if (this.el) {
-          // Empty result: clear stale text so the old result isn't mistaken
-          // for the new one (O-2).
-          this.el.result.textContent = d.text || '';
-          if (d.text) {
-            this.setStatus('ok', 'Text extracted.');
-            this.resultText = d.text;
-          } else {
-            this.setStatus('', 'No text found in the selected region.');
-          }
+        if (d.text) {
+          this.setStatus('ok', 'Text extracted and copied.');
+          this.resultText = d.text;
+        } else {
+          this.setStatus('', 'No text found in the selected region.');
         }
         this.render();
       } else if (evt === 'ocr.text') {
         // OCR completed in panel
         this.busy = false;
         if (this._watchdog) { clearTimeout(this._watchdog); this._watchdog = null; }
-        if (this.el) {
-          this.el.result.textContent = d.text || '';
-          if (d.text) {
-            this.setStatus('ok', 'Text extracted.');
-            this.resultText = d.text;
-          } else {
-            this.setStatus('', 'No text found in the selected region.');
-          }
+        if (d.text) {
+          this.setStatus('ok', 'Text extracted and copied.');
+          this.resultText = d.text;
+        } else {
+          this.setStatus('', 'No text found in the selected region.');
         }
         this.render();
       }
@@ -193,24 +158,21 @@
         var text = (res && res.data && res.data.text || '').trim();
         this.busy = false;
         if (this._watchdog) { clearTimeout(this._watchdog); this._watchdog = null; }
-        if (this.el) {
-          this.el.result.textContent = text;
-          if (text) {
-            this.setStatus('ok', 'Text extracted.');
-            this.resultText = text;
-            // Auto-copy via service worker (has clipboardWrite permission,
-            // works without user activation).
-            if (CSB.settings.get('ocr.autoCopy', true)) {
-              chrome.runtime.sendMessage(
-                { type: 'CSB_CLIPBOARD_WRITE_TEXT', text: text },
-                function (res) {
-                  if (res && res.ok) CSB.panel.toast('Text copied');
-                }
-              );
-            }
-          } else {
-            this.setStatus('', 'No text found in the selected region.');
+        if (text) {
+          this.setStatus('ok', 'Text extracted and copied.');
+          this.resultText = text;
+          // Auto-copy via service worker (has clipboardWrite permission,
+          // works without user activation).
+          if (CSB.settings.get('ocr.autoCopy', true)) {
+            chrome.runtime.sendMessage(
+              { type: 'CSB_CLIPBOARD_WRITE_TEXT', text: text },
+              function (res) {
+                if (res && res.ok) CSB.panel.toast('Text copied');
+              }
+            );
           }
+        } else {
+          this.setStatus('', 'No text found in the selected region.');
         }
       } catch (e) {
         this.busy = false;
