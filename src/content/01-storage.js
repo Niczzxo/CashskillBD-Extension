@@ -48,7 +48,7 @@
       format: 'png',            // png | jpg
       quality: 'high',          // standard | high
       autoDownload: false,
-      copyAfterCapture: false,
+      copyAfterCapture: true,
       autoCopyArea: true,
       filenameTemplate: 'CashSkillBD_FullPage_[DATE]_[TIME]'
     },

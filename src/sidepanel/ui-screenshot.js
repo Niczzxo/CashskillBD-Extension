@@ -152,7 +152,7 @@
           // Full-page uses copyAfterCapture; area uses autoCopyArea.
           var wantCopy = d.area
             ? CSB.settings.get('screenshot.autoCopyArea', true)
-            : CSB.settings.get('screenshot.copyAfterCapture', false);
+            : CSB.settings.get('screenshot.copyAfterCapture', true);
           if (wantCopy) {
             this.copyFromDataUrl(true);
           }

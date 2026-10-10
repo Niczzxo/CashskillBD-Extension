@@ -198,6 +198,13 @@
           if (text) {
             this.setStatus('ok', 'Text extracted.');
             this.resultText = text;
+            // Auto-copy if enabled
+            if (CSB.settings.get('ocr.autoCopy', true)) {
+              var self2 = this;
+              navigator.clipboard.writeText(text).then(function () {
+                CSB.panel.toast('Text copied');
+              }).catch(function () {});
+            }
           } else {
             this.setStatus('', 'No text found in the selected region.');
           }

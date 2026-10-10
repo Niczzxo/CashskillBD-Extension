@@ -240,6 +240,13 @@
         this.ui.result.textContent = out.translated || '(empty result)';
         this.setStatus('ok', 'Translated' + (source === 'auto' ? ' from ' + detectedName : '') + '.');
         this.state = 'RESULT';
+        // Auto-copy translated text
+        if (out.translated) {
+          try {
+            await navigator.clipboard.writeText(out.translated);
+            CSB.panel.toast('Translation copied');
+          } catch (e) {}
+        }
         if (CSB.settings.get('notifications.translationCompleted', true)) {
           U.notify('CashSkillBD', 'Translation completed.');
         }
