@@ -188,6 +188,9 @@
   var activeTab = 'typing';
 
   function buildFrame() {
+    // Clear any existing content (panel may be reopened on same document).
+    root.innerHTML = '';
+    for (var k in panesEl) { delete panesEl[k]; }
     var head = U.el('div', 'csb-head');
     var logo = U.el('img', 'csb-logo');
     logo.src = CSB.panel.logoUrl();
@@ -231,7 +234,13 @@
       b.classList.toggle('csb-active', b.dataset.tab === id);
     });
     TABS.forEach(function (t) {
-      if (panesEl[t.id]) panesEl[t.id].classList.toggle('csb-active', t.id === id);
+      if (panesEl[t.id]) {
+        var on = (t.id === id);
+        // Toggle BOTH active classes: panel.js injects CSS for .csb-active,
+        // 02-styles.js uses .csb-pane-active. Belt and suspenders.
+        panesEl[t.id].classList.toggle('csb-active', on);
+        panesEl[t.id].classList.toggle('csb-pane-active', on);
+      }
     });
     if (save && CSB.settings.get('panel.rememberLastTab', true)) {
       try { chrome.storage.session.set({ csb_last_tab: id }); } catch (e) {}
