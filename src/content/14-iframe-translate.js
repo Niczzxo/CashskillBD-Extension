@@ -176,6 +176,19 @@
       } catch (e2) {}
     }
     try { walk(document.body); } catch (e3) {}
+    // Attributes: placeholders, alt text, titles.
+    try {
+      var els = document.body.querySelectorAll('input[placeholder],textarea[placeholder],[alt],[title]');
+      for (var i = 0; i < els.length && items.length < 1800; i++) {
+        (function (el) {
+          ['placeholder', 'alt', 'title'].forEach(function (at) {
+            var v = null;
+            try { v = el.getAttribute(at); } catch (e) {}
+            if (v && v.trim() && MEANINGFUL.test(v)) items.push({ el: el, attr: at, text: v });
+          });
+        })(els[i]);
+      }
+    } catch (e4) {}
     return items;
   }
 
@@ -186,11 +199,16 @@
       var tr = parts[i];
       if (!tr || !tr.trim()) return;
       if (!it.done) {
-        it.orig = it.node.nodeValue;
+        try {
+          it.orig = it.node ? it.node.nodeValue : it.el.getAttribute(it.attr);
+        } catch (e) { it.orig = ''; }
         it.done = true;
         st.pairs.push(it);
       }
-      try { it.node.nodeValue = tr; } catch (e) {}
+      try {
+        if (it.node) it.node.nodeValue = tr;
+        else if (it.el) it.el.setAttribute(it.attr, tr);
+      } catch (e2) {}
     });
   }
 
@@ -231,7 +249,10 @@
 
   function restore() {
     st.pairs.forEach(function (it) {
-      try { it.node.nodeValue = it.orig; } catch (e) {}
+      try {
+        if (it.node) it.node.nodeValue = it.orig;
+        else if (it.el && it.orig != null) it.el.setAttribute(it.attr, it.orig);
+      } catch (e) {}
     });
     st.pairs = [];
     st.state = 'idle';
@@ -246,6 +267,12 @@
       return;
     }
     if (nd.nodeType !== 1 || SKIP.test(nd.tagName)) return;
+    // Attributes on the added element itself.
+    ['placeholder', 'alt', 'title'].forEach(function (at) {
+      var v = null;
+      try { v = nd.getAttribute(at); } catch (e) {}
+      if (v && v.trim() && MEANINGFUL.test(v)) out.push({ el: nd, attr: at, text: v });
+    });
     try {
       var walker = document.createTreeWalker(nd, NodeFilter.SHOW_TEXT, null);
       var n;
@@ -253,11 +280,22 @@
         var t2 = accept(n);
         if (t2) out.push({ node: n, text: t2 });
       }
+      // Attributes on descendants.
+      var els = nd.querySelectorAll('input[placeholder],textarea[placeholder],[alt],[title]');
+      for (var i = 0; i < els.length; i++) {
+        (function (el) {
+          ['placeholder', 'alt', 'title'].forEach(function (at2) {
+            var v2 = null;
+            try { v2 = el.getAttribute(at2); } catch (e2) {}
+            if (v2 && v2.trim() && MEANINGFUL.test(v2)) out.push({ el: el, attr: at2, text: v2 });
+          });
+        })(els[i]);
+      }
       if (nd.shadowRoot) {
         var sn = nd.shadowRoot.firstChild;
         while (sn) { var snx = sn.nextSibling; collectSubtree(sn, out); sn = snx; }
       }
-    } catch (e) {}
+    } catch (e3) {}
   }
 
   function startObserver() {
@@ -277,9 +315,11 @@
             var c = clean(it.text);
             if (!c || !MEANINGFUL.test(c)) return false;
             it.clean = c;
-            // Skip nodes we already translated.
+            // Skip nodes/attrs we already translated.
             for (var i = 0; i < st.pairs.length; i++) {
-              if (st.pairs[i].node === it.node) return false;
+              var p = st.pairs[i];
+              if (it.node && p.node === it.node) return false;
+              if (it.el && p.el === it.el && p.attr === it.attr) return false;
             }
             return true;
           });
