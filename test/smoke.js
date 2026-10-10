@@ -426,6 +426,16 @@ t('settings.load has a timeout (never blocks boot)',
   /storage timeout|5000/.test(src('src/content/01-storage.js')));
 t('translatePage resets state on unexpected error',
   /Never leave the engine wedged/.test(src('src/content/11-page-translate.js')));
+t('iframe translate bundle exists and bails in top frame',
+  /14-iframe-translate\.js/.test(src('src/content/14-iframe-translate.js')) &&
+  /window\.self === window\.top/.test(src('src/content/14-iframe-translate.js')));
+t('manifest registers iframe bundle with all_frames:true',
+  (function () {
+    var m = JSON.parse(src('manifest.json'));
+    return m.content_scripts.some(function (e) {
+      return (e.js || []).indexOf('src/content/14-iframe-translate.js') !== -1 && e.all_frames === true;
+    });
+  })());
 t('detect uses targetLang with timeout (11-4/11-7)',
   /this\.targetLang\(\)/.test(src('src/content/11-page-translate.js')) && /detect timeout/.test(src('src/content/11-page-translate.js')));
 t('pairs cleared on pagehide (11-6)',
