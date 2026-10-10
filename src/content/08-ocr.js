@@ -297,6 +297,7 @@
           workerPath: base + '/worker.min.js',
           corePath: base + '/tesseract-core.wasm.js',
           langPath: langPath,
+          workerBlobURL: false,
           logger: function () {}
         });
       } catch (e) {
