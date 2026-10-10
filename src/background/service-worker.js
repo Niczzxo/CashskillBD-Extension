@@ -246,6 +246,35 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true; // async response
   }
 
+  if (msg.type === 'CSB_CLIPBOARD_WRITE_TEXT') {
+    // Service worker has clipboardWrite permission; can write without user activation.
+    try {
+      navigator.clipboard.writeText(msg.text || '').then(
+        () => sendResponse({ ok: true }),
+        (err) => sendResponse({ ok: false, error: String((err && err.message) || err) })
+      );
+    } catch (e) {
+      sendResponse({ ok: false, error: String((e && e.message) || e) });
+    }
+    return true; // async response
+  }
+
+  if (msg.type === 'CSB_CLIPBOARD_WRITE_IMAGE') {
+    // Write image blob to clipboard via service worker.
+    try {
+      fetch(msg.dataUrl).then(r => r.blob()).then(blob => {
+        var mime = blob.type || 'image/png';
+        return navigator.clipboard.write([new ClipboardItem({ [mime]: blob })]);
+      }).then(
+        () => sendResponse({ ok: true }),
+        (err) => sendResponse({ ok: false, error: String((err && err.message) || err) })
+      );
+    } catch (e) {
+      sendResponse({ ok: false, error: String((e && e.message) || e) });
+    }
+    return true; // async response
+  }
+
   if (msg.type === 'CSB_NOTIFY') {
     notify(msg.title || 'CashSkillBD', msg.message || '');
     sendResponse({ ok: true });

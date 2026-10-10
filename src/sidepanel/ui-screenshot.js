@@ -165,6 +165,20 @@
       var self = this;
       var dataUrl = this.dataUrl;
       if (!dataUrl) { if (!silent) self.setStatus('err', 'Capture a screenshot first.'); return false; }
+      // Try service worker first (has clipboardWrite permission, no user activation needed).
+      // Fall back to panel clipboard on failure.
+      var swOk = await new Promise(function (resolve) {
+        try {
+          chrome.runtime.sendMessage(
+            { type: 'CSB_CLIPBOARD_WRITE_IMAGE', dataUrl: dataUrl },
+            function (res) { resolve(!!(res && res.ok)); }
+          );
+        } catch (e) { resolve(false); }
+      });
+      if (swOk) {
+        CSB.panel.toast('Screenshot copied to clipboard');
+        return true;
+      }
       try {
         var res = await fetch(dataUrl);
         var blob = await res.blob();

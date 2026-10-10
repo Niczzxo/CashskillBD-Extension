@@ -240,11 +240,15 @@
         this.ui.result.textContent = out.translated || '(empty result)';
         this.setStatus('ok', 'Translated' + (source === 'auto' ? ' from ' + detectedName : '') + '.');
         this.state = 'RESULT';
-        // Auto-copy translated text
+        // Auto-copy via service worker (clipboardWrite permission).
         if (out.translated) {
           try {
-            await navigator.clipboard.writeText(out.translated);
-            CSB.panel.toast('Translation copied');
+            chrome.runtime.sendMessage(
+              { type: 'CSB_CLIPBOARD_WRITE_TEXT', text: out.translated },
+              function (res) {
+                if (res && res.ok) CSB.panel.toast('Translation copied');
+              }
+            );
           } catch (e) {}
         }
         if (CSB.settings.get('notifications.translationCompleted', true)) {

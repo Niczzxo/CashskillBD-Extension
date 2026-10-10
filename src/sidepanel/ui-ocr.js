@@ -198,12 +198,15 @@
           if (text) {
             this.setStatus('ok', 'Text extracted.');
             this.resultText = text;
-            // Auto-copy if enabled
+            // Auto-copy via service worker (has clipboardWrite permission,
+            // works without user activation).
             if (CSB.settings.get('ocr.autoCopy', true)) {
-              var self2 = this;
-              navigator.clipboard.writeText(text).then(function () {
-                CSB.panel.toast('Text copied');
-              }).catch(function () {});
+              chrome.runtime.sendMessage(
+                { type: 'CSB_CLIPBOARD_WRITE_TEXT', text: text },
+                function (res) {
+                  if (res && res.ok) CSB.panel.toast('Text copied');
+                }
+              );
             }
           } else {
             this.setStatus('', 'No text found in the selected region.');
