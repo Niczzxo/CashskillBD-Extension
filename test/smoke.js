@@ -407,6 +407,11 @@ t('page card has target language selector',
   /csb-tr-pagetgt/.test(src('src/content/06-translate.js')));
 t('last-resort auto-translate when detection fails',
   /looksForeign/.test(src('src/content/11-page-translate.js')));
+t('fetchDirect has a timeout (no hung translation)',
+  /AbortController/.test(src('src/content/06-translate.js')) &&
+  /request timed out/.test(src('src/content/06-translate.js')));
+t('translatePage has a stuck-state watchdog',
+  /_translatingSince/.test(src('src/content/11-page-translate.js')));
 t('detect uses targetLang with timeout (11-4/11-7)',
   /this\.targetLang\(\)/.test(src('src/content/11-page-translate.js')) && /detect timeout/.test(src('src/content/11-page-translate.js')));
 t('pairs cleared on pagehide (11-6)',

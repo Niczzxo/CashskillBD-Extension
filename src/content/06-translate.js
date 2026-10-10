@@ -69,11 +69,24 @@
 
   function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
 
-  /** Direct fetch of a JSON translation endpoint. */
+  /** Direct fetch of a JSON translation endpoint (with timeout — a hung
+   * request must never wedge the page in "translating" forever). */
   async function fetchDirect(url) {
-    var res = await fetch(url, { method: 'GET' });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    return await res.json();
+    var ctrl = null, timer = null;
+    try {
+      if (typeof AbortController !== 'undefined') {
+        ctrl = new AbortController();
+        timer = setTimeout(function () { try { ctrl.abort(); } catch (e) {} }, 25000);
+      }
+      var res = await fetch(url, { method: 'GET', signal: ctrl ? ctrl.signal : undefined });
+      if (timer) clearTimeout(timer);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return await res.json();
+    } catch (e) {
+      if (timer) clearTimeout(timer);
+      if (e && e.name === 'AbortError') throw new Error('request timed out');
+      throw e;
+    }
   }
 
   /** Same request proxied through the service worker (not bound by the page CSP). */

@@ -558,7 +558,15 @@
     },
 
     translatePage: async function () {
-      if (this.state === 'translating') return;
+      // Watchdog: a stuck 'translating' state (e.g. a hung network request
+      // from an older build) must never block translations forever.
+      if (this.state === 'translating') {
+        if (this._translatingSince && Date.now() - this._translatingSince > 180000) {
+          this.state = 'idle';
+        } else {
+          return;
+        }
+      }
       var target = this.targetLang();
       // If we never detected (manual trigger), detect first so we can
       // bail out early when the page is already in the target language.
@@ -574,6 +582,7 @@
       }
       var source = this.detectedLang || 'auto';
       this.state = 'translating';
+      this._translatingSince = Date.now();
       this.emitState();
       this.cancelRequested = false;
       this.pairs = [];
@@ -624,6 +633,7 @@
       var workers = [];
       for (var w = 0; w < 6; w++) workers.push(worker());
       await Promise.all(workers);
+      this._translatingSince = 0;
       if (this.cancelRequested) {
         this.restorePairs();
         this.state = 'idle';
