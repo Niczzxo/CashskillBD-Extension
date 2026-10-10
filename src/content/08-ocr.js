@@ -97,16 +97,21 @@
 
       var self = this;
       var sx = 0, sy = 0, dragging = false;
+      // Document coordinates for scroll-aware selection
+      var sxDoc = 0, syDoc = 0, lastCX = 0, lastCY = 0;
 
-      function paint(x2, y2) {
-        var x = Math.min(x2, sx), y = Math.min(y2, sy);
-        var w = Math.abs(x2 - sx), h = Math.abs(y2 - sy);
+      function paintDoc(cxDoc, cyDoc) {
+        var x = Math.min(cxDoc, sxDoc), y = Math.min(cyDoc, syDoc);
+        var w = Math.abs(cxDoc - sxDoc), h = Math.abs(cyDoc - syDoc);
+        // Convert to viewport for display
+        var vx = x - window.scrollX, vy = y - window.scrollY;
         box.style.display = '';
-        box.style.left = x + 'px';
-        box.style.top = y + 'px';
+        box.style.left = vx + 'px';
+        box.style.top = vy + 'px';
         box.style.width = w + 'px';
         box.style.height = h + 'px';
-        self._rect = { x: x, y: y, w: w, h: h };
+        self._rect = { x: x, y: y, w: w, h: h, docCoords: true };
+        hint.textContent = '🔤 ' + Math.round(w) + ' × ' + Math.round(h) + ' px — scroll to extend, Esc to cancel';
       }
 
       function onDown(e) {
@@ -114,6 +119,9 @@
         if (dragging) return;
         dragging = true;
         sx = e.clientX; sy = e.clientY;
+        lastCX = e.clientX; lastCY = e.clientY;
+        sxDoc = e.clientX + window.scrollX;
+        syDoc = e.clientY + window.scrollY;
         self._rect = null;
         try { overlay.setPointerCapture(e.pointerId); } catch (capErr) {}
         e.preventDefault();
@@ -121,16 +129,19 @@
 
       function onMove(e) {
         if (!dragging) return;
-        paint(e.clientX, e.clientY);
+        lastCX = e.clientX; lastCY = e.clientY;
+        paintDoc(e.clientX + window.scrollX, e.clientY + window.scrollY);
+      }
+
+      function onScroll() {
+        if (!dragging) return;
+        paintDoc(lastCX + window.scrollX, lastCY + window.scrollY);
       }
 
       function onUp(e) {
         if (!dragging) return;
         dragging = false;
-        // Final measurement from the release point: the rect always matches
-        // exactly what the user dragged, even if move events were coalesced
-        // or missed between press and release.
-        paint(e.clientX, e.clientY);
+        paintDoc(e.clientX + window.scrollX, e.clientY + window.scrollY);
         cleanup();
         var r = self._rect;
         if (!r || r.w < 8 || r.h < 8) {
@@ -163,6 +174,7 @@
         window.removeEventListener('pointermove', onMove, true);
         window.removeEventListener('pointerup', onUp, true);
         window.removeEventListener('pointercancel', onCancel, true);
+        window.removeEventListener('scroll', onScroll, true);
         document.removeEventListener('keydown', onKey, true);
         if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
         if (hint.parentNode) hint.parentNode.removeChild(hint);
@@ -172,6 +184,7 @@
       window.addEventListener('pointermove', onMove, true);
       window.addEventListener('pointerup', onUp, true);
       window.addEventListener('pointercancel', onCancel, true);
+      window.addEventListener('scroll', onScroll, true);
       document.addEventListener('keydown', onKey, true);
 
       this.overlay = overlay;
@@ -192,19 +205,39 @@
       this.setStatus('busy', 'Reading text…');
       this.render();
       try {
-        var dataUrl = await new Promise(function (resolve, reject) {
-          try {
-            chrome.runtime.sendMessage({ type: 'CSB_CAPTURE_VISIBLE' }, function (res) {
-              if (res && res.ok) resolve(res.dataUrl);
-              else reject(new Error((res && res.error) || 'Unable to capture this page. Please try again.'));
-            });
-          } catch (e) { reject(e); }
-        });
-        var img = await U.loadImage(dataUrl);
         var dpr = window.devicePixelRatio || 1;
-        // captureVisibleTab returns device pixels; rect is in CSS pixels.
-        var cw = Math.round(rect.w * dpr), ch = Math.round(rect.h * dpr);
-        var cx = Math.round(rect.x * dpr), cy = Math.round(rect.y * dpr);
+        var isDocCoords = !!rect.docCoords;
+        // Check if rect fits in current viewport
+        var vx = isDocCoords ? rect.x - window.scrollX : rect.x;
+        var vy = isDocCoords ? rect.y - window.scrollY : rect.y;
+        var fitsInViewport = vx >= 0 && vy >= 0 &&
+          (vx + rect.w) <= window.innerWidth && (vy + rect.h) <= window.innerHeight;
+
+        var img, cx, cy, cw, ch;
+        if (fitsInViewport) {
+          // Fast path: capture visible and crop
+          var dataUrl = await new Promise(function (resolve, reject) {
+            try {
+              chrome.runtime.sendMessage({ type: 'CSB_CAPTURE_VISIBLE' }, function (res) {
+                if (res && res.ok) resolve(res.dataUrl);
+                else reject(new Error((res && res.error) || 'Unable to capture this page. Please try again.'));
+              });
+            } catch (e) { reject(e); }
+          });
+          img = await U.loadImage(dataUrl);
+          cw = Math.round(rect.w * dpr); ch = Math.round(rect.h * dpr);
+          cx = Math.round(vx * dpr); cy = Math.round(vy * dpr);
+        } else {
+          // Full-page path: capture via screenshot module and crop to document rect
+          self.setStatus('busy', 'Capturing page for text…');
+          self.render();
+          // Use the screenshot module's full-page capture
+          var fullShot = await CSB.screenshot.debugCapture({ format: 'png' });
+          if (!fullShot) throw new Error('Unable to capture this page.');
+          img = await U.loadImage(fullShot);
+          cw = Math.round(rect.w * dpr); ch = Math.round(rect.h * dpr);
+          cx = Math.round(rect.x * dpr); cy = Math.round(rect.y * dpr);
+        }
         // Clamp to the captured image.
         cx = U.clamp(cx, 0, img.width - 1); cy = U.clamp(cy, 0, img.height - 1);
         cw = Math.min(cw, img.width - cx); ch = Math.min(ch, img.height - cy);

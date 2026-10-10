@@ -528,44 +528,96 @@
       overlay.appendChild(box);
 
       var sx = 0, sy = 0, dragging = false;
+      // Document coordinates for scroll-aware selection
+      var sxDoc = 0, syDoc = 0;
       function cleanup() {
         self._selecting = false;
         try { hint.remove(); overlay.remove(); } catch (e) {}
         window.removeEventListener('pointermove', onMove, true);
         window.removeEventListener('pointerup', onUp, true);
         window.removeEventListener('keydown', onKey, true);
+        window.removeEventListener('wheel', onWheel, { passive: true });
+        window.removeEventListener('scroll', onScroll, true);
         self.render();
+      }
+      // Update the visible box from document-coordinate selection
+      function updateBox(cxDoc, cyDoc) {
+        var x1 = Math.min(sxDoc, cxDoc), y1 = Math.min(syDoc, cyDoc);
+        var x2 = Math.max(sxDoc, cxDoc), y2 = Math.max(syDoc, cyDoc);
+        // Convert to viewport coordinates for display
+        var vx1 = x1 - window.scrollX, vy1 = y1 - window.scrollY;
+        var vx2 = x2 - window.scrollX, vy2 = y2 - window.scrollY;
+        box.style.display = '';
+        box.style.left = vx1 + 'px';
+        box.style.top = vy1 + 'px';
+        box.style.width = (vx2 - vx1) + 'px';
+        box.style.height = (vy2 - vy1) + 'px';
+        // Update hint with size
+        hint.textContent = '🖼️ ' + Math.round(x2 - x1) + ' × ' + Math.round(y2 - y1) + ' px — scroll to extend, Esc to cancel';
       }
       function onMove(e) {
         if (!dragging) return;
-        box.style.display = '';
-        box.style.left = Math.min(e.clientX, sx) + 'px';
-        box.style.top = Math.min(e.clientY, sy) + 'px';
-        box.style.width = Math.abs(e.clientX - sx) + 'px';
-        box.style.height = Math.abs(e.clientY - sy) + 'px';
+        var cxDoc = e.clientX + window.scrollX;
+        var cyDoc = e.clientY + window.scrollY;
+        updateBox(cxDoc, cyDoc);
+      }
+      function onWheel(e) {
+        // Allow page scroll during drag; update box after scroll
+        if (!dragging) return;
+        // Let the scroll happen, then update box on next frame
+        requestAnimationFrame(function () {
+          if (!dragging) return;
+          // Use last known mouse position (viewport coords stay same, doc coords change)
+          var cxDoc = lastCX + window.scrollX;
+          var cyDoc = lastCY + window.scrollY;
+          updateBox(cxDoc, cyDoc);
+        });
+      }
+      var lastCX = 0, lastCY = 0;
+      function onScroll() {
+        if (!dragging) return;
+        var cxDoc = lastCX + window.scrollX;
+        var cyDoc = lastCY + window.scrollY;
+        updateBox(cxDoc, cyDoc);
       }
       function onUp(e) {
         if (!dragging) { cleanup(); return; }
         dragging = false;
-        var w = Math.abs(e.clientX - sx), h = Math.abs(e.clientY - sy);
-        var x = Math.min(e.clientX, sx), y = Math.min(e.clientY, sy);
+        var cxDoc = e.clientX + window.scrollX;
+        var cyDoc = e.clientY + window.scrollY;
+        var x = Math.min(sxDoc, cxDoc), y = Math.min(syDoc, cyDoc);
+        var w = Math.abs(cxDoc - sxDoc), h = Math.abs(cyDoc - syDoc);
         cleanup();
         if (w < 8 || h < 8) { self.setStatus('err', 'Selection too small — drag a larger area.'); return; }
-        self.captureArea({ x: x, y: y, w: w, h: h });
+        // Pass document coordinates; captureArea handles viewport vs full-page
+        self.captureArea({ x: x, y: y, w: w, h: h, docCoords: true });
       }
       function onKey(e) {
         if (e.key === 'Escape') { cleanup(); self.setStatus('', 'Ready'); }
       }
       overlay.addEventListener('pointerdown', function (e) {
-        dragging = true; sx = e.clientX; sy = e.clientY;
+        dragging = true;
+        sx = e.clientX; sy = e.clientY;
+        lastCX = e.clientX; lastCY = e.clientY;
+        // Store start in document coordinates
+        sxDoc = e.clientX + window.scrollX;
+        syDoc = e.clientY + window.scrollY;
         try { e.preventDefault(); } catch (e2) {}
       });
-      window.addEventListener('pointermove', onMove, true);
+      window.addEventListener('pointermove', function (e) {
+        lastCX = e.clientX; lastCY = e.clientY;
+        onMove(e);
+      }, true);
       window.addEventListener('pointerup', onUp, true);
       window.addEventListener('keydown', onKey, true);
+      // Wheel and scroll listeners for extending selection beyond viewport
+      window.addEventListener('wheel', onWheel, { passive: true });
+      window.addEventListener('scroll', onScroll, true);
     },
 
-    /** Capture just the selected viewport rectangle, then auto-copy it. */
+    /** Capture the selected rectangle (document coordinates if docCoords).
+     * Uses fast viewport crop when the rect fits in the current viewport,
+     * otherwise captures the full page via debugger and crops. */
     captureArea: async function (rect) {
       if (this.state === 'CAPTURING' || this.state === 'PROCESSING') return;
       this.state = 'CAPTURING';
@@ -579,17 +631,44 @@
       } catch (e0) {}
       try {
         await U.sleep(150); // let the panel hide before capturing
-        var shot = await this.captureVisible();
-        var img = await U.loadImage(shot);
         var dpr = window.devicePixelRatio || 1;
-        var sx = Math.max(0, Math.round(rect.x * dpr));
-        var sy = Math.max(0, Math.round(rect.y * dpr));
-        var sw = Math.min(Math.round(rect.w * dpr), img.width - sx);
-        var sh = Math.min(Math.round(rect.h * dpr), img.height - sy);
-        if (sw < 2 || sh < 2) throw new Error('Selection is outside the visible area.');
-        var canvas = document.createElement('canvas');
-        canvas.width = sw; canvas.height = sh;
-        canvas.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+        var isDocCoords = !!rect.docCoords;
+        // Convert document coords to viewport coords for the fast path check
+        var vx = isDocCoords ? rect.x - window.scrollX : rect.x;
+        var vy = isDocCoords ? rect.y - window.scrollY : rect.y;
+        var vw = window.innerWidth, vh = window.innerHeight;
+        var fitsInViewport = vx >= 0 && vy >= 0 && (vx + rect.w) <= vw && (vy + rect.h) <= vh;
+
+        var sw, sh, canvas;
+        if (fitsInViewport) {
+          // Fast path: capture visible viewport and crop
+          var shot = await this.captureVisible();
+          var img = await U.loadImage(shot);
+          var sx = Math.max(0, Math.round(vx * dpr));
+          var sy = Math.max(0, Math.round(vy * dpr));
+          sw = Math.min(Math.round(rect.w * dpr), img.width - sx);
+          sh = Math.min(Math.round(rect.h * dpr), img.height - sy);
+          if (sw < 2 || sh < 2) throw new Error('Selection is outside the visible area.');
+          canvas = document.createElement('canvas');
+          canvas.width = sw; canvas.height = sh;
+          canvas.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+        } else {
+          // Full-page path: capture entire page via debugger, crop to document rect
+          this.setStatus('busy', 'Capturing full page for selection…');
+          this.render();
+          var fullShot = await this.debugCapture({ format: 'png' });
+          if (!fullShot) throw new Error('Full-page capture failed.');
+          var fullImg = await U.loadImage(fullShot);
+          // Document rect to image pixels (debugger captures at full page size)
+          var dsx = Math.max(0, Math.round(rect.x * dpr));
+          var dsy = Math.max(0, Math.round(rect.y * dpr));
+          sw = Math.min(Math.round(rect.w * dpr), fullImg.width - dsx);
+          sh = Math.min(Math.round(rect.h * dpr), fullImg.height - dsy);
+          if (sw < 2 || sh < 2) throw new Error('Selection is outside the page.');
+          canvas = document.createElement('canvas');
+          canvas.width = sw; canvas.height = sh;
+          canvas.getContext('2d').drawImage(fullImg, dsx, dsy, sw, sh, 0, 0, sw, sh);
+        }
         this.canvas = canvas;
         this.dataUrl = canvas.toDataURL('image/png');
         this.state = 'PREVIEW';
