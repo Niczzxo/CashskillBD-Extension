@@ -191,7 +191,8 @@
                   self.setStatus('ok', 'Text extracted and copied.');
                   CSB.panel.toast('Text copied');
                 } else {
-                  self.setStatus('ok', 'Text extracted. Click COPY TEXT to copy.');
+                  self.setStatus('err', 'Auto-copy failed. Click COPY TEXT to copy manually.');
+                  CSB.panel.toast('Click COPY TEXT to copy');
                 }
                 self.render();
               }
