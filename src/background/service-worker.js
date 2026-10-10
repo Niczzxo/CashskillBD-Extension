@@ -250,11 +250,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     // Use offscreen document for reliable clipboard write without user activation.
     (async function () {
       try {
-        // Ensure offscreen document exists
         var hasDoc = false;
         try {
-          var clients = await chrome.offscreen.hasDocument();
-          hasDoc = !!clients;
+          hasDoc = await chrome.offscreen.hasDocument();
         } catch (e) {}
         if (!hasDoc) {
           await chrome.offscreen.createDocument({
@@ -262,8 +260,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             reasons: ['CLIPBOARD'],
             justification: 'Copy OCR/translation text to clipboard'
           });
+          // Wait for offscreen document to be ready
+          await new Promise(function (r) { setTimeout(r, 500); });
         }
-        // Send to offscreen document
         chrome.runtime.sendMessage(
           { type: 'CSB_OFFSCREEN_COPY_TEXT', text: msg.text || '' },
           function (res) {

@@ -166,13 +166,28 @@
         if (text) {
           this.resultText = text;
           if (this.el.result) this.el.result.textContent = text;
-          // Auto-copy via service worker (has clipboardWrite permission).
+          // Auto-copy: try service worker (offscreen), then execCommand fallback.
           var self = this;
+          var doExecCommandCopy = function () {
+            try {
+              var ta = document.createElement('textarea');
+              ta.value = text;
+              ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0;';
+              document.body.appendChild(ta);
+              ta.select();
+              var ok = document.execCommand('copy');
+              ta.remove();
+              return !!ok;
+            } catch (e) { return false; }
+          };
           if (CSB.settings.get('ocr.autoCopy', true)) {
             chrome.runtime.sendMessage(
               { type: 'CSB_CLIPBOARD_WRITE_TEXT', text: text },
               function (res) {
                 if (res && res.ok) {
+                  self.setStatus('ok', 'Text extracted and copied.');
+                  CSB.panel.toast('Text copied');
+                } else if (doExecCommandCopy()) {
                   self.setStatus('ok', 'Text extracted and copied.');
                   CSB.panel.toast('Text copied');
                 } else {
