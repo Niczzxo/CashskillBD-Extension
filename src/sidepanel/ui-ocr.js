@@ -22,21 +22,17 @@
         '<p class="csb-hint" style="margin:0 0 10px">Select an area — the text is copied automatically. Works on images, canvas text, and non-selectable content.</p>' +
         '<button class="csb-btn csb-btn-primary csb-btn-block" id="csb-ocr-go" type="button">🔤 START SELECTION</button>' +
         '<div class="csb-status" id="csb-ocr-status"><span class="csb-dot"></span><span>Ready</span></div>' +
-        '<button class="csb-btn csb-btn-ghost csb-btn-block" id="csb-ocr-copy-last" type="button" style="margin-top:10px">📋 COPY LAST TEXT</button>' +
-        '<button class="csb-btn csb-btn-ghost csb-btn-block" id="csb-ocr-fullpage" type="button" style="margin-top:10px">📄 COPY FULL PAGE TEXT</button>' +
-        '<div class="csb-result" id="csb-ocr-fullpage-result" aria-live="polite" style="display:none;margin-top:10px;max-height:200px;overflow-y:auto;white-space:pre-wrap"></div>';
+        '<button class="csb-btn csb-btn-ghost csb-btn-block" id="csb-ocr-copy-last" type="button" style="margin-top:10px">📋 COPY LAST TEXT</button>';
       pane.appendChild(card);
 
       var q = function (sel) { return pane.querySelector(sel); };
       this.el = {
         startBtn: q('#csb-ocr-go'),
-        status: q('#csb-ocr-status'),
-        fullpageResult: q('#csb-ocr-fullpage-result')
+        status: q('#csb-ocr-status')
       };
 
       q('#csb-ocr-go').addEventListener('click', function () { self.select(); });
       q('#csb-ocr-copy-last').addEventListener('click', function () { self.copyLast(); });
-      q('#csb-ocr-fullpage').addEventListener('click', function () { self.copyFullPage(); });
       this.render();
     },
 
@@ -90,29 +86,6 @@
       });
     },
 
-    copyFullPage: function () {
-      var self = this;
-      this.setStatus('busy', 'Copying full page text…');
-      if (this.el.fullpageResult) this.el.fullpageResult.style.display = 'none';
-      this.render();
-      CSB.bus.cmd('pageText.copy').then(function (r) {
-        if (r && r.copied) {
-          self.setStatus('ok', 'Full page text copied (' + (r.length || 0) + ' chars).');
-          // Show the copied text in the text box
-          if (self.el.fullpageResult && r.text) {
-            self.el.fullpageResult.textContent = r.text;
-            self.el.fullpageResult.style.display = '';
-          }
-          CSB.panel.toast('Full page text copied');
-        } else {
-          self.setStatus('err', 'Could not copy page text.');
-        }
-        self.render();
-      }).catch(function (e) {
-        self.setStatus('err', 'Could not copy page text.');
-        self.render();
-      });
-    },
 
     clear: function () {
       CSB.bus.cmd('ocr.clear').catch(function () {});
