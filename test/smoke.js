@@ -412,6 +412,8 @@ t('fetchDirect has a timeout (no hung translation)',
   /request timed out/.test(src('src/content/06-translate.js')));
 t('translatePage has a stuck-state watchdog',
   /_translatingSince/.test(src('src/content/11-page-translate.js')));
+t('late-content observer re-runs detection on slow pages',
+  /_lateHook/.test(src('src/content/11-page-translate.js')));
 t('detect uses targetLang with timeout (11-4/11-7)',
   /this\.targetLang\(\)/.test(src('src/content/11-page-translate.js')) && /detect timeout/.test(src('src/content/11-page-translate.js')));
 t('pairs cleared on pagehide (11-6)',

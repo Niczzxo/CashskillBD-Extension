@@ -73,24 +73,52 @@
       if (this._prompted) return;
       this._prompted = true;
       this._detectTries = 0;
+      var self0 = this;
       // SPA navigation: re-detect when the URL changes without a full reload,
       // but only if we never translated (translated pages are covered by the
       // MutationObserver). Covers back/forward + hash routers.
       try {
         if (!this._spaHook) {
           this._spaHook = true;
-          var self = this;
           var recheck = function () {
-            if (self.state === 'idle') {
-              self._detectTries = 0;
-              self.detectedLang = null;
-              self.tryDetect();
+            if (self0.state === 'idle') {
+              self0._detectTries = 0;
+              self0.detectedLang = null;
+              self0.tryDetect();
             }
           };
           window.addEventListener('popstate', function () { setTimeout(recheck, 1500); });
           window.addEventListener('hashchange', function () { setTimeout(recheck, 1500); });
         }
       } catch (e) {}
+      // Late content: JS-heavy pages (surveys, SPAs) often render text long
+      // after document_idle. Watch for added nodes and re-run detection once
+      // substantial text appears (up to 60s). Without this, auto-translate
+      // silently never fires and the user must click manually.
+      try {
+        if (!this._lateHook && window.MutationObserver && document.body) {
+          this._lateHook = true;
+          var moTimer = null;
+          var mo = new MutationObserver(function () {
+            if (self0.state !== 'idle' || self0.detectedLang) {
+              try { mo.disconnect(); } catch (e) {}
+              return;
+            }
+            if (moTimer) return; // debounced
+            moTimer = setTimeout(function () {
+              moTimer = null;
+              if (self0.state !== 'idle' || self0.detectedLang) return;
+              if (self0.sampleText().length >= 60) {
+                try { mo.disconnect(); } catch (e2) {}
+                self0._detectTries = 0;
+                self0.tryDetect();
+              }
+            }, 1000);
+          });
+          mo.observe(document.body, { childList: true, subtree: true });
+          setTimeout(function () { try { mo.disconnect(); } catch (e) {} }, 60000);
+        }
+      } catch (e2) {}
       this.tryDetect();
     },
 
@@ -118,8 +146,9 @@
         if (htmlLang && htmlLang === target) return; // already the target language
         var sample = this.sampleText();
         if (sample.length < 60) {
-          // Content may still be loading — retry a few times, then give up.
-          if (this._detectTries < 4) {
+          // Content may still be loading — retry for ~20s, then rely on the
+          // late-content observer in maybePrompt for even slower pages.
+          if (this._detectTries < 8) {
             this._detectTries++;
             var self = this;
             setTimeout(function () { self.tryDetect(); }, 2500);
