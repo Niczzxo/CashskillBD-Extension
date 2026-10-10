@@ -113,6 +113,13 @@
         }
         this.render();
       } else if (evt === 'ocr.result') {
+        var self = this;
+        // If the content script sent an image, do OCR in the panel
+        // (Tesseract loads reliably in the extension page context).
+        if (d && d.image) {
+          this.doPanelOCR(d.image);
+          return;
+        }
         this.busy = false;
         if (this._watchdog) { clearTimeout(this._watchdog); this._watchdog = null; }
         if (this.el) {
@@ -122,7 +129,64 @@
           if (!d.text) this.setStatus('', 'No text found in the selected region.');
         }
         this.render();
+      } else if (evt === 'ocr.text') {
+        // OCR completed in panel
+        this.busy = false;
+        if (this._watchdog) { clearTimeout(this._watchdog); this._watchdog = null; }
+        if (this.el) {
+          this.el.result.textContent = d.text || '';
+          if (d.text) {
+            this.setStatus('ok', 'Text extracted.');
+            this.resultText = d.text;
+          } else {
+            this.setStatus('', 'No text found in the selected region.');
+          }
+        }
+        this.render();
       }
+    },
+
+    doPanelOCR: async function (imageDataUrl) {
+      var self = this;
+      this.setStatus('busy', 'Extracting text…');
+      this.busy = true;
+      this.render();
+      try {
+        if (typeof Tesseract === 'undefined' || !Tesseract.createWorker) {
+          throw new Error('OCR engine failed to load.');
+        }
+        var base = chrome.runtime.getURL('src/lib/tesseract');
+        var worker = await Tesseract.createWorker('eng', Tesseract.OEM.LSTM_ONLY, {
+          workerPath: base + '/worker.min.js',
+          corePath: base + '/tesseract-core.wasm.js',
+          langPath: base + '/lang',
+          logger: function () {}
+        });
+        var res = await Promise.race([
+          worker.recognize(imageDataUrl),
+          new Promise(function (_, reject) {
+            setTimeout(function () { reject(new Error('OCR timed out.')); }, 60000);
+          })
+        ]);
+        try { await worker.terminate(); } catch (e) {}
+        var text = (res && res.data && res.data.text || '').trim();
+        this.busy = false;
+        if (this.el) {
+          this.el.result.textContent = text;
+          if (text) {
+            this.setStatus('ok', 'Text extracted.');
+            this.resultText = text;
+            CSB.panel.toast('Text extracted');
+          } else {
+            this.setStatus('', 'No text found in the selected region.');
+          }
+        }
+      } catch (e) {
+        this.busy = false;
+        this.setStatus('err', (e && e.message) || 'OCR failed.');
+      }
+      if (this._watchdog) { clearTimeout(this._watchdog); this._watchdog = null; }
+      this.render();
     }
   };
 
