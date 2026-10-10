@@ -388,7 +388,12 @@ t('isVisible checks ancestors via checkVisibility (11-1)',
 t('observer skips already-translated texts (11-2)',
   /seen\[key\]/.test(src('src/content/11-page-translate.js')));
 t('collectSubtree checks visibility (11-3)',
-  /if \(!self\.isVisible\(nd\)\) return/.test(src('src/content/11-page-translate.js')));
+  /!self\.isVisible\(nd\)/.test(src('src/content/11-page-translate.js')));
+t('dropdown options are translated (options bypass visibility)',
+  /OPTION/.test(src('src/content/11-page-translate.js')) &&
+  /querySelectorAll\('option'\)/.test(src('src/content/11-page-translate.js')));
+t('optgroup labels are translated',
+  /optgroup\[label\]/.test(src('src/content/11-page-translate.js')));
 t('detect uses targetLang with timeout (11-4/11-7)',
   /this\.targetLang\(\)/.test(src('src/content/11-page-translate.js')) && /detect timeout/.test(src('src/content/11-page-translate.js')));
 t('pairs cleared on pagehide (11-6)',

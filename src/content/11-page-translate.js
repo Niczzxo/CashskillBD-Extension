@@ -28,7 +28,12 @@
 (function () {
   var U = CSB.util;
 
-  var SKIP_TAGS = /^(SCRIPT|STYLE|NOSCRIPT|TEXTAREA|OPTION|SELECT|CODE|PRE|KBD|SAMP|VAR|IFRAME|CANVAS)$/;
+  var SKIP_TAGS = /^(SCRIPT|STYLE|NOSCRIPT|TEXTAREA|CODE|PRE|KBD|SAMP|VAR|IFRAME|CANVAS)$/;
+  // NOTE: OPTION/SELECT are intentionally NOT skipped — dropdown option
+  // labels are translated too (form submission uses the `value` attribute,
+  // so translating the visible label is safe). Options have no CSS boxes,
+  // so they are collected explicitly in collectItems (visibility check
+  // would drop them).
   var MEANINGFUL = /[^\d\s\p{P}\p{S}]/u; // has a real letter, not just digits/punct/symbols
   var BATCH_TEXTS = 25;
   var BATCH_CHARS = 1400; // keeps the joined payload inside one provider chunk
@@ -275,6 +280,7 @@
       var items = [];
       if (!document.body) return items;
       this._visCache = new Map();
+      var seen = new Set(); // text nodes already collected (option dedupe)
       var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
       var node, count = 0;
       while ((node = walker.nextNode())) {
@@ -283,8 +289,37 @@
         if (!t) continue;
         if (!this.isVisible(node.parentElement)) continue;
         items.push({ node: node, text: t });
+        seen.add(node);
         count++;
       }
+      // Dropdown <option> labels (native <select> and <datalist>): option
+      // elements have no CSS boxes, so the visibility check above would drop
+      // them. Collect explicitly — the browser renders the native popup from
+      // DOM option text, so translating here translates the dropdown list.
+      try {
+        var opts = document.body.querySelectorAll('option');
+        for (var oi = 0; oi < opts.length && items.length < MAX_NODES + 300; oi++) {
+          var opt = opts[oi];
+          if (opt.closest && opt.closest('[data-csb-ui],#cashskillbd-host,#cashskillbd-pt-host')) continue;
+          var tn = opt.firstChild;
+          while (tn && tn.nodeType !== 3) tn = tn.nextSibling;
+          if (!tn || seen.has(tn)) continue;
+          var ot = tn.nodeValue;
+          if (!ot || !ot.trim() || !MEANINGFUL.test(ot)) continue;
+          items.push({ node: tn, text: ot });
+          seen.add(tn);
+        }
+      } catch (e) {}
+      // <optgroup> group labels inside dropdowns.
+      try {
+        var groups = document.body.querySelectorAll('optgroup[label]');
+        for (var gi = 0; gi < groups.length && items.length < MAX_NODES + 300; gi++) {
+          var g = groups[gi];
+          if (g.closest && g.closest('[data-csb-ui],#cashskillbd-host,#cashskillbd-pt-host')) continue;
+          var gv = g.getAttribute('label');
+          if (gv && gv.trim() && MEANINGFUL.test(gv)) items.push({ el: g, attr: 'label', text: gv });
+        }
+      } catch (e2) {}
       if (document.title && document.title.trim() && MEANINGFUL.test(document.title)) {
         items.push({ isTitle: true, text: document.title });
       }
@@ -314,7 +349,8 @@
       if (nd.nodeType !== 1) return;
       if (nd.closest && nd.closest('[data-csb-ui],#cashskillbd-host,#cashskillbd-pt-host')) return;
       if (SKIP_TAGS.test(nd.tagName)) return;
-      if (!self.isVisible(nd)) return; // 11-3: don't translate hidden dynamic nodes
+      // <option> has no CSS box — never gate it on visibility.
+      if (nd.tagName !== 'OPTION' && !self.isVisible(nd)) return; // 11-3: don't translate hidden dynamic nodes
       try {
         var walker = document.createTreeWalker(nd, NodeFilter.SHOW_TEXT, null);
         var n;
