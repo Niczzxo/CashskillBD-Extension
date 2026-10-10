@@ -27,7 +27,8 @@
         '<div class="csb-row" style="margin-top:10px">' +
           '<button class="csb-btn csb-btn-ghost" id="csb-ocr-copy" type="button" style="flex:1">COPY TEXT</button>' +
           '<button class="csb-btn csb-btn-ghost" id="csb-ocr-clear" type="button" style="flex:1">CLEAR</button>' +
-        '</div>';
+        '</div>' +
+        '<button class="csb-btn csb-btn-ghost csb-btn-block" id="csb-ocr-fullpage" type="button" style="margin-top:10px">📄 COPY FULL PAGE TEXT</button>';
       pane.appendChild(card);
 
       var q = function (sel) { return pane.querySelector(sel); };
@@ -42,6 +43,7 @@
       q('#csb-ocr-go').addEventListener('click', function () { self.select(); });
       q('#csb-ocr-copy').addEventListener('click', function () { self.copy(); });
       q('#csb-ocr-clear').addEventListener('click', function () { self.clear(); });
+      q('#csb-ocr-fullpage').addEventListener('click', function () { self.copyFullPage(); });
       this.render();
     },
 
@@ -92,6 +94,24 @@
         });
       }).catch(function (e) {
         self.setStatus('err', 'Clipboard blocked — click COPY TEXT again.');
+      });
+    },
+
+    copyFullPage: function () {
+      var self = this;
+      this.setStatus('busy', 'Copying full page text…');
+      this.render();
+      CSB.bus.cmd('pageText.copy').then(function (r) {
+        if (r && r.copied) {
+          self.setStatus('ok', 'Full page text copied (' + (r.length || 0) + ' chars).');
+          CSB.panel.toast('Full page text copied');
+        } else {
+          self.setStatus('err', 'Could not copy page text.');
+        }
+        self.render();
+      }).catch(function (e) {
+        self.setStatus('err', 'Could not copy page text.');
+        self.render();
       });
     },
 

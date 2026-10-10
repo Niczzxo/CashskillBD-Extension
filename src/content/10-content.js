@@ -93,6 +93,51 @@
         case 'ocr.state':
           done({ state: CSB.ocr.state, text: CSB.ocr.resultText || '' });
           break;
+        case 'pageText.copy': {
+          // Extract all visible text from the page and copy it.
+          var fullText = (function () {
+            var walker = document.createTreeWalker(
+              document.body || document.documentElement,
+              NodeFilter.SHOW_TEXT,
+              {
+                acceptNode: function (node) {
+                  var p = node.parentElement;
+                  if (!p) return NodeFilter.FILTER_REJECT;
+                  var tag = p.tagName;
+                  if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'NOSCRIPT') return NodeFilter.FILTER_REJECT;
+                  var t = node.nodeValue;
+                  if (!t || !t.trim()) return NodeFilter.FILTER_REJECT;
+                  return NodeFilter.FILTER_ACCEPT;
+                }
+              }
+            );
+            var parts = [];
+            var n;
+            while ((n = walker.nextNode())) {
+              parts.push(n.nodeValue.trim());
+            }
+            return parts.join('\n');
+          })();
+          var doDone = function (copied) { done({ copied: copied, length: fullText.length }); };
+          try {
+            navigator.clipboard.writeText(fullText).then(
+              function () { doDone(true); },
+              function () {
+                try {
+                  var ta = document.createElement('textarea');
+                  ta.value = fullText;
+                  ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0;';
+                  document.body.appendChild(ta);
+                  ta.select();
+                  var ok = document.execCommand('copy');
+                  ta.remove();
+                  doDone(!!ok);
+                } catch (e2) { doDone(false); }
+              }
+            );
+          } catch (e) { doDone(false); }
+          return;
+        }
         // page translation
         case 'pt.state':
           done({ state: CSB.pageTranslate.state, detectedLang: CSB.pageTranslate.detectedLang });
