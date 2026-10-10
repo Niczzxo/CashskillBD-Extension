@@ -113,20 +113,18 @@
         }
         this.render();
       } else if (evt === 'ocr.result') {
-        var self = this;
-        // If the content script sent an image, do OCR in the panel
-        // (Tesseract loads reliably in the extension page context).
-        if (d && d.image) {
-          this.doPanelOCR(d.image);
-          return;
-        }
         this.busy = false;
         if (this._watchdog) { clearTimeout(this._watchdog); this._watchdog = null; }
         if (this.el) {
           // Empty result: clear stale text so the old result isn't mistaken
           // for the new one (O-2).
           this.el.result.textContent = d.text || '';
-          if (!d.text) this.setStatus('', 'No text found in the selected region.');
+          if (d.text) {
+            this.setStatus('ok', 'Text extracted.');
+            this.resultText = d.text;
+          } else {
+            this.setStatus('', 'No text found in the selected region.');
+          }
         }
         this.render();
       } else if (evt === 'ocr.text') {
@@ -144,62 +142,6 @@
         }
         this.render();
       }
-    },
-
-    doPanelOCR: async function (imageDataUrl) {
-      var self = this;
-      this.setStatus('busy', 'Extracting text…');
-      this.busy = true;
-      this.render();
-      try {
-        // Step 1: Verify Tesseract loaded
-        if (typeof Tesseract === 'undefined') {
-          throw new Error('Tesseract script not loaded (check panel.html)');
-        }
-        if (!Tesseract.recognize) {
-          throw new Error('Tesseract.recognize not available');
-        }
-        // Step 2: Fetch worker script and create blob URL
-        // (chrome-extension:// URLs fail in importScripts)
-        var base = chrome.runtime.getURL('src/lib/tesseract');
-        var workerCode = await fetch(base + '/worker.min.js').then(function (r) {
-          if (!r.ok) throw new Error('Worker script fetch failed: ' + r.status);
-          return r.text();
-        });
-        var workerBlob = new Blob([workerCode], { type: 'application/javascript' });
-        var workerBlobUrl = URL.createObjectURL(workerBlob);
-        // Step 3: Recognize with blob worker URL
-        var res = await Promise.race([
-          Tesseract.recognize(imageDataUrl, 'eng', {
-            workerPath: workerBlobUrl,
-            corePath: base + '/tesseract-core.wasm.js',
-            langPath: base + '/lang/',
-            logger: function () {}
-          }),
-          new Promise(function (_, reject) {
-            setTimeout(function () { reject(new Error('OCR timed out after 60s')); }, 60000);
-          })
-        ]);
-        try { URL.revokeObjectURL(workerBlobUrl); } catch (e) {}
-        var text = (res && res.data && res.data.text || '').trim();
-        this.busy = false;
-        if (this.el) {
-          this.el.result.textContent = text;
-          if (text) {
-            this.setStatus('ok', 'Text extracted.');
-            this.resultText = text;
-            CSB.panel.toast('Text extracted');
-          } else {
-            this.setStatus('', 'No text found in the selected region.');
-          }
-        }
-      } catch (e) {
-        this.busy = false;
-        var msg = 'OCR error: ' + ((e && e.message) || String(e));
-        this.setStatus('err', msg);
-      }
-      if (this._watchdog) { clearTimeout(this._watchdog); this._watchdog = null; }
-      this.render();
     }
   };
 
