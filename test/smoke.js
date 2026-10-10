@@ -426,9 +426,10 @@ t('settings.load has a timeout (never blocks boot)',
   /storage timeout|5000/.test(src('src/content/01-storage.js')));
 t('translatePage resets state on unexpected error',
   /Never leave the engine wedged/.test(src('src/content/11-page-translate.js')));
-t('iframe translate bundle exists and bails in top frame',
-  /14-iframe-translate\.js/.test(src('src/content/14-iframe-translate.js')) &&
-  /window\.self === window\.top/.test(src('src/content/14-iframe-translate.js')));
+t('iframe bundle: shadow DOM piercing + endpoint fallback + last-resort',
+  /shadowRoot/.test(src('src/content/14-iframe-translate.js')) &&
+  /detectRemote/.test(src('src/content/14-iframe-translate.js')) &&
+  /foreignHeu/.test(src('src/content/14-iframe-translate.js')));
 t('manifest registers iframe bundle with all_frames:true',
   (function () {
     var m = JSON.parse(src('manifest.json'));

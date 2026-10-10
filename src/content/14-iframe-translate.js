@@ -152,16 +152,30 @@
   function collect() {
     var items = [];
     if (!document.body) return items;
-    var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
-    var node, count = 0;
-    while ((node = walker.nextNode())) {
-      if (count >= 1500) break;
-      var t = accept(node);
-      if (!t) continue;
-      if (!isVisible(node.parentElement)) continue;
-      items.push({ node: node, text: t });
-      count++;
+    var count = 0;
+    function walk(nd) {
+      if (count >= 1500 || !nd) return;
+      if (nd.nodeType === 3) {
+        var t = accept(nd);
+        if (t) {
+          try {
+            if (isVisible(nd.parentElement)) { items.push({ node: nd, text: t }); count++; }
+          } catch (e) {}
+        }
+        return;
+      }
+      if (nd.nodeType !== 1 || SKIP.test(nd.tagName)) return;
+      var ch = nd.firstChild;
+      while (ch) { var nx = ch.nextSibling; walk(ch); ch = nx; }
+      // Pierce open shadow roots — survey widgets often use them.
+      try {
+        if (nd.shadowRoot) {
+          var sn = nd.shadowRoot.firstChild;
+          while (sn) { var snx = sn.nextSibling; walk(sn); sn = snx; }
+        }
+      } catch (e2) {}
     }
+    try { walk(document.body); } catch (e3) {}
     return items;
   }
 
@@ -239,6 +253,10 @@
         var t2 = accept(n);
         if (t2) out.push({ node: n, text: t2 });
       }
+      if (nd.shadowRoot) {
+        var sn = nd.shadowRoot.firstChild;
+        while (sn) { var snx = sn.nextSibling; collectSubtree(sn, out); sn = snx; }
+      }
     } catch (e) {}
   }
 
@@ -313,12 +331,36 @@
     });
   }
 
+  function detectRemote(sample) {
+    var url = 'https://translate.googleapis.com/translate_a/single?client=gtx' +
+      '&sl=auto&tl=' + encodeURIComponent(st.target) +
+      '&dt=t&q=' + encodeURIComponent(sample.slice(0, 500));
+    return fetchJson(url).then(function (data) {
+      var d = (data && data[2]) ? String(data[2]).toLowerCase().split(/[-_]/)[0] : null;
+      return (d && d !== 'auto' && d !== 'und') ? d : null;
+    }).catch(function () { return null; });
+  }
+
+  // Last-resort foreign check for Latin-script targets (script-agnostic
+  // share of non-ASCII letters). Used when all detection fails.
+  function foreignHeu(sample, target) {
+    if (!/^(en|fr|de|es|it|pt|nl|sv|da|fi|no|nb|nn|is|pl|cs|sk|sl|hu|ro|hr|bs|ca|gl|eu|cy|ga|gd|mt|sq|sw|id|ms|vi|tl|mg|ny|st|sn|zu|xh|yo|ig|ha|so|su|jv|haw|la|eo|fy|co|ht|hmn|ceb|ku|tr|az|uz|tk|lv|lt|et)$/
+      .test(String(target || '').toLowerCase())) return false;
+    try {
+      var letters = sample.match(/\p{L}/gu) || [];
+      if (!letters.length) return false;
+      var na = 0;
+      for (var i = 0; i < letters.length; i++) {
+        if (letters[i].codePointAt(0) > 127) na++;
+      }
+      return na / letters.length > 0.08;
+    } catch (e) { return false; }
+  }
+
   function maybeTranslate() {
     getSettings().then(function (s) {
       if (s) { st.target = s.target; st.auto = s.auto; }
       if (!st.auto) return;
-      // Never-translate hosts are owned by the top frame; iframes follow the
-      // global auto setting.
       var sample = sampleText();
       if (sample.length < 40) {
         if (st._tries < 6) {
@@ -331,17 +373,31 @@
       try {
         htmlLang = (document.documentElement.getAttribute('lang') || '').toLowerCase().split(/[-_]/)[0];
       } catch (e) {}
-      if (htmlLang && htmlLang === st.target) return;
+      var target = st.target;
       function go(lang) {
-        if (!lang || lang === 'auto' || lang === 'und' || lang === st.target) return;
+        if (!lang || lang === 'auto' || lang === 'und' || lang === target) return;
         st.detected = lang;
         translateNow();
       }
-      if (htmlLang) { go(htmlLang); return; }
+      // 1. html lang attribute (verified — attributes are often wrong).
+      if (htmlLang) {
+        if (htmlLang === target) {
+          if (!foreignHeu(sample, target)) return;
+        } else {
+          go(htmlLang);
+          return;
+        }
+      }
+      // 2. on-device CLD.
       detectLocal(sample).then(function (lang) {
-        if (lang) go(lang);
-        // No endpoint fallback here: keep the iframe bundle light; the top
-        // frame's engine covers detection failures via the panel button.
+        if (lang && lang !== target) { go(lang); return; }
+        if (lang && lang === target) return;
+        // 3. endpoint detection.
+        detectRemote(sample).then(function (rlang) {
+          if (rlang) { go(rlang); return; }
+          // 4. last resort: looks foreign → translate with sl=auto.
+          if (foreignHeu(sample, target)) { st.detected = 'auto'; translateNow(); }
+        });
       });
     });
   }
@@ -369,10 +425,21 @@
   } catch (e) {}
 
   // Boot after settings; re-check once when the document fully loads.
+  // Follow live setting changes (target language / auto toggle).
   try {
     maybeTranslate();
     window.addEventListener('load', function () {
       setTimeout(function () { if (st.state === 'idle' && !st.detected) maybeTranslate(); }, 1500);
     });
+    if (chrome.storage && chrome.storage.onChanged) {
+      chrome.storage.onChanged.addListener(function (changes, area) {
+        if (area !== 'local' || !changes[STORE_KEY]) return;
+        try {
+          var d = changes[STORE_KEY].newValue || {};
+          st.target = (d.translation && d.translation.targetLanguage) || 'en';
+          st.auto = !(d.pageTranslate && d.pageTranslate.autoTranslate === false);
+        } catch (e) {}
+      });
+    }
   } catch (e) {}
 })();
