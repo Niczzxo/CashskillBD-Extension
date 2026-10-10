@@ -143,7 +143,23 @@
         var target = this.targetLang();
         var htmlLang = (document.documentElement.getAttribute('lang') || '')
           .toLowerCase().split(/[-_]/)[0];
-        if (htmlLang && htmlLang === target) return; // already the target language
+        if (htmlLang && htmlLang === target) {
+          // The lang attribute claims the target language, but survey
+          // routers often set it wrong — verify against the actual text
+          // (only verifiable for Latin-script targets).
+          if (!this._latinTarget(target)) return;
+          var vSample = this.sampleText();
+          if (vSample.length < 60) {
+            if (this._detectTries < 8) {
+              this._detectTries++;
+              var selfV = this;
+              setTimeout(function () { selfV.tryDetect(); }, 2500);
+            }
+            return;
+          }
+          if (!this.looksForeign(vSample, target)) return; // truly the target language
+          // Text looks foreign despite the attribute — detect properly below.
+        }
         var sample = this.sampleText();
         if (sample.length < 60) {
           // Content may still be loading — retry for ~20s, then rely on the
@@ -727,6 +743,14 @@
         var items = self.prepareItems(batch);
         if (!items.length) return;
         var target = self.targetLang();
+        // Only translate texts that actually look foreign to the target.
+        // (Replaces the old text-keyed `seen` dedup, which wrongly skipped
+        // survey options that the page's framework had reverted to the
+        // source language after our translation.)
+        if (self._latinTarget(target)) {
+          items = items.filter(function (it) { return self.looksForeign(it.clean, target); });
+          if (!items.length) return;
+        }
         var source = self.detectedLang || 'auto';
         var batches = self.makeBatches(items);
         (async function () {
@@ -747,19 +771,25 @@
           await Promise.all(workers);
         })();
       }
+      // Text dedup, kept only for non-Latin targets (tickers/live feeds).
+      // For Latin targets the looksForeign filter in flush() handles this
+      // without breaking re-rendered survey options.
       var seen = Object.create(null); // 11-2: hash set of translated texts
       var obs = new MutationObserver(function (muts) {
         if (self.state !== 'translated') return;
+        var latin = self._latinTarget(self.targetLang());
         muts.forEach(function (m) {
           if (m.type !== 'childList') return;
           Array.prototype.forEach.call(m.addedNodes, function (nd) {
             var before = pending.length;
             self.collectSubtree(nd, pending);
-            // Drop texts we've already translated (live tickers re-insert).
-            for (var i = before; i < pending.length; i++) {
-              var key = pending[i].text;
-              if (seen[key]) { pending.splice(i, 1); i--; before--; }
-              else seen[key] = 1;
+            if (!latin) {
+              // Drop texts we've already translated (live tickers re-insert).
+              for (var i = before; i < pending.length; i++) {
+                var key = pending[i].text;
+                if (seen[key]) { pending.splice(i, 1); i--; before--; }
+                else seen[key] = 1;
+              }
             }
           });
         });
@@ -769,6 +799,51 @@
         obs.observe(document.body || document.documentElement, { childList: true, subtree: true });
       } catch (e) { return; }
       this.observer = obs;
+      // Safety net: every 8s (up to ~5 min) re-scan for visible foreign text
+      // that slipped through — attribute-revealed content, framework
+      // re-renders, shadow-DOM widgets. This keeps survey options translated
+      // even when the page fights back.
+      try {
+        var sweeps = 0;
+        var sweepTimer = setInterval(function () {
+          if (self.state !== 'translated' || sweeps++ > 37) {
+            clearInterval(sweepTimer);
+            return;
+          }
+          try {
+            var found = [];
+            self._visCache = new Map();
+            self.collectSweep(document.body || document.documentElement, found);
+            if (!found.length) return;
+            var sItems = self.prepareItems(found);
+            var sTarget = self.targetLang();
+            if (self._latinTarget(sTarget)) {
+              sItems = sItems.filter(function (it) { return self.looksForeign(it.clean, sTarget); });
+            }
+            if (!sItems.length) return;
+            var sSource = self.detectedLang || 'auto';
+            var sBatches = self.makeBatches(sItems);
+            (async function () {
+              var sbi = 0;
+              async function sWorker() {
+                while (sbi < sBatches.length) {
+                  if (self.state !== 'translated') return;
+                  var sb = sBatches[sbi++];
+                  try {
+                    var sParts = await self.translateBatch(
+                      sb.map(function (b) { return b.clean; }), sSource, sTarget);
+                    sb.forEach(function (it, j) { self.applyItem(it, sParts[j]); });
+                  } catch (e) {}
+                }
+              }
+              var sWorkers = [];
+              for (var w = 0; w < 4; w++) sWorkers.push(sWorker());
+              await Promise.all(sWorkers);
+            })();
+          } catch (e) {}
+        }, 8000);
+        this._sweepTimer = sweepTimer;
+      } catch (e2) {}
     },
 
     stopObserver: function () {
@@ -776,7 +851,48 @@
         try { this.observer.disconnect(); } catch (e) {}
         this.observer = null;
       }
-    }
+      if (this._sweepTimer) {
+        try { clearInterval(this._sweepTimer); } catch (e2) {}
+        this._sweepTimer = null;
+      }
+    },
+
+    /** Latin-script targets: the looksForeign() heuristic applies. */
+    _latinTarget: function (target) {
+      return /^(en|fr|de|es|it|pt|nl|sv|da|fi|no|nb|nn|is|pl|cs|sk|sl|hu|ro|hr|bs|ca|gl|eu|cy|ga|gd|mt|sq|sw|id|ms|vi|tl|mg|ny|st|sn|zu|xh|yo|ig|ha|so|su|jv|haw|la|eo|fy|co|ht|hmn|ceb|ku|tr|az|uz|tk|lv|lt|et)$/
+        .test(String(target || '').toLowerCase());
+    },
+
+    /** Deep text collection for the sweep: walks the DOM and pierces open
+     * shadow roots (survey widgets often use them). */
+    collectSweep: function (root, out) {
+      var self = this;
+      var count = 0;
+      function walk(nd) {
+        if (count > 2000 || !nd) return;
+        if (nd.nodeType === 3) {
+          var t = self.acceptTextNode(nd);
+          if (t) {
+            try {
+              if (self.isVisible(nd.parentElement)) { out.push({ node: nd, text: t }); count++; }
+            } catch (e) {}
+          }
+          return;
+        }
+        if (nd.nodeType !== 1) return;
+        if (nd.closest && nd.closest('[data-csb-ui],#cashskillbd-host,#cashskillbd-pt-host')) return;
+        if (SKIP_TAGS.test(nd.tagName)) return;
+        var ch = nd.firstChild;
+        while (ch) { var nx = ch.nextSibling; walk(ch); ch = nx; }
+        try {
+          if (nd.shadowRoot) {
+            var sn = nd.shadowRoot.firstChild;
+            while (sn) { var snx = sn.nextSibling; walk(sn); sn = snx; }
+          }
+        } catch (e2) {}
+      }
+      try { walk(root); } catch (e3) {}
+    },
   };
 
   CSB.pageTranslate = pt;
