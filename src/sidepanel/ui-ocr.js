@@ -152,23 +152,20 @@
       this.busy = true;
       this.render();
       try {
-        if (typeof Tesseract === 'undefined' || !Tesseract.createWorker) {
-          throw new Error('OCR engine failed to load.');
+        if (typeof Tesseract === 'undefined' || !Tesseract.recognize) {
+          throw new Error('OCR engine not loaded. Please reload the extension.');
         }
-        var base = chrome.runtime.getURL('src/lib/tesseract');
-        var worker = await Tesseract.createWorker('eng', Tesseract.OEM.LSTM_ONLY, {
-          workerPath: base + '/worker.min.js',
-          corePath: base + '/tesseract-core.wasm.js',
-          langPath: base + '/lang',
-          logger: function () {}
-        });
+        // Use the simple recognize API (no worker management).
         var res = await Promise.race([
-          worker.recognize(imageDataUrl),
+          Tesseract.recognize(imageDataUrl, 'eng', {
+            corePath: chrome.runtime.getURL('src/lib/tesseract/tesseract-core.wasm.js'),
+            langPath: chrome.runtime.getURL('src/lib/tesseract/lang'),
+            logger: function () {}
+          }),
           new Promise(function (_, reject) {
-            setTimeout(function () { reject(new Error('OCR timed out.')); }, 60000);
+            setTimeout(function () { reject(new Error('OCR timed out. Try a smaller area.')); }, 60000);
           })
         ]);
-        try { await worker.terminate(); } catch (e) {}
         var text = (res && res.data && res.data.text || '').trim();
         this.busy = false;
         if (this.el) {
@@ -183,7 +180,9 @@
         }
       } catch (e) {
         this.busy = false;
-        this.setStatus('err', (e && e.message) || 'OCR failed.');
+        var msg = (e && e.message) || 'OCR failed.';
+        // Show the real error for diagnosis
+        this.setStatus('err', msg);
       }
       if (this._watchdog) { clearTimeout(this._watchdog); this._watchdog = null; }
       this.render();
