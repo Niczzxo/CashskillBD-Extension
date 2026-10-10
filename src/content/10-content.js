@@ -94,31 +94,20 @@
           done({ state: CSB.ocr.state, text: CSB.ocr.resultText || '' });
           break;
         case 'pageText.copy': {
-          // Extract all visible text from the page and copy it.
-          var fullText = (function () {
-            var walker = document.createTreeWalker(
-              document.body || document.documentElement,
-              NodeFilter.SHOW_TEXT,
-              {
-                acceptNode: function (node) {
-                  var p = node.parentElement;
-                  if (!p) return NodeFilter.FILTER_REJECT;
-                  var tag = p.tagName;
-                  if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'NOSCRIPT') return NodeFilter.FILTER_REJECT;
-                  var t = node.nodeValue;
-                  if (!t || !t.trim()) return NodeFilter.FILTER_REJECT;
-                  return NodeFilter.FILTER_ACCEPT;
-                }
-              }
-            );
-            var parts = [];
-            var n;
-            while ((n = walker.nextNode())) {
-              parts.push(n.nodeValue.trim());
-            }
-            return parts.join('\n');
-          })();
-          var doDone = function (copied) { done({ copied: copied, length: fullText.length }); };
+          // Extract full page text preserving layout via innerText.
+          // innerText respects rendered line breaks, unlike textContent.
+          var fullText = '';
+          try {
+            var body = document.body || document.documentElement;
+            // Clone and remove script/style/noscript for clean text
+            var clone = body.cloneNode(true);
+            var bad = clone.querySelectorAll('script, style, noscript');
+            for (var bi = 0; bi < bad.length; bi++) bad[bi].remove();
+            fullText = (clone.innerText || '').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+          } catch (e) {
+            fullText = ((document.body || document.documentElement).innerText || '').trim();
+          }
+          var doDone = function (copied) { done({ copied: copied, length: fullText.length, text: fullText }); };
           try {
             navigator.clipboard.writeText(fullText).then(
               function () { doDone(true); },
