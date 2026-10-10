@@ -112,6 +112,11 @@
           if (this._watchdog) { clearTimeout(this._watchdog); this._watchdog = null; }
         }
         this.render();
+      } else if (evt === 'ocr.image') {
+        // Content script sent captured image; do OCR in panel (extension CSP).
+        if (d && d.image) {
+          this.doPanelOCR(d.image);
+        }
       } else if (evt === 'ocr.result') {
         this.busy = false;
         if (this._watchdog) { clearTimeout(this._watchdog); this._watchdog = null; }
@@ -142,6 +147,47 @@
         }
         this.render();
       }
+    },
+
+    doPanelOCR: async function (imageDataUrl) {
+      this.setStatus('busy', 'Extracting text…');
+      this.busy = true;
+      this.render();
+      try {
+        if (typeof Tesseract === 'undefined' || !Tesseract.recognize) {
+          throw new Error('OCR engine not loaded.');
+        }
+        var base = chrome.runtime.getURL('src/lib/tesseract');
+        var res = await Promise.race([
+          Tesseract.recognize(imageDataUrl, 'eng', {
+            workerPath: base + '/worker.min.js',
+            corePath: base + '/tesseract-core.wasm.js',
+            langPath: base + '/lang/',
+            workerBlobURL: false,
+            logger: function () {}
+          }),
+          new Promise(function (_, reject) {
+            setTimeout(function () { reject(new Error('OCR timed out.')); }, 60000);
+          })
+        ]);
+        var text = (res && res.data && res.data.text || '').trim();
+        this.busy = false;
+        if (this._watchdog) { clearTimeout(this._watchdog); this._watchdog = null; }
+        if (this.el) {
+          this.el.result.textContent = text;
+          if (text) {
+            this.setStatus('ok', 'Text extracted.');
+            this.resultText = text;
+          } else {
+            this.setStatus('', 'No text found in the selected region.');
+          }
+        }
+      } catch (e) {
+        this.busy = false;
+        if (this._watchdog) { clearTimeout(this._watchdog); this._watchdog = null; }
+        this.setStatus('err', 'OCR error: ' + ((e && e.message) || String(e)));
+      }
+      this.render();
     }
   };
 

@@ -109,5 +109,8 @@
   ],
   "side_panel": {
     "default_path": "src/sidepanel/panel.html"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; object-src 'self';"
   }
 }

@@ -225,25 +225,13 @@
           wctx.drawImage(canvas, 0, 0, work.width, work.height);
         }
 
-        var text = await this.recognize(work);
-        text = (text || '').trim();
-        if (!text) {
-          this.state = 'ERROR';
-          this.setStatus('err', 'No readable text was detected.');
-        } else {
-          this.state = 'RESULT';
-          this.resultText = text;
-          if (this.ui) this.ui.result.textContent = text;
-          this.setStatus('ok', 'Text extracted.');
-          if (CSB.bridge) { try { CSB.bridge.emit('ocr.result', { text: text }); } catch (e) {} }
-          if (CSB.settings.get('notifications.ocrCompleted', true)) {
-            U.notify('CashSkillBD', 'OCR completed — text extracted.');
-          }
-          if (CSB.settings.get('ocr.autoCopy', true)) {
-            var copied = await this.copy(true);
-            if (copied) CSB.panel.toast('Text copied to clipboard');
-          }
-        }
+        // Send the captured image to the panel for OCR.
+        // (Panel runs in extension context with our CSP, avoiding page CSP issues.)
+        var imageDataUrl = work.toDataURL('image/png');
+        this.state = 'PROCESSING';
+        this.setStatus('busy', 'Extracting text…');
+        if (CSB.bridge) { try { CSB.bridge.emit('ocr.image', { image: imageDataUrl }); } catch (e) {} }
+        // The panel will do OCR and send back 'ocr.result' with the text.
       } catch (e) {
         this.state = 'ERROR';
         this.setStatus('err', (e && e.message) || 'No readable text was detected.');
