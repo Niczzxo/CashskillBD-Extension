@@ -575,13 +575,103 @@
         else if (it.isTitle) it.orig = document.title;
         else if (it.el) it.orig = it.el.getAttribute(it.attr);
         it.applied = true;
+        // No-op translations (output identical to input) are remembered so
+        // the sweep never burns quota retrying them.
+        if (translated === it.orig) {
+          try {
+            if (!this._noopTexts) this._noopTexts = new Set();
+            this._noopTexts.add(it.clean || cleanText(it.orig || ''));
+          } catch (e) {}
+          return;
+        }
         this.pairs.push(it);
+        // Track exactly which node got which original: this is what makes
+        // re-translation precise for every world language — a re-rendered
+        // survey option (new node) is translated, a ticker duplicate whose
+        // translation is still intact elsewhere is skipped.
+        try {
+          var key = it.clean || cleanText(it.orig || '');
+          if (!this._pairsByOrig) this._pairsByOrig = new Map();
+          var arr = this._pairsByOrig.get(key);
+          if (!arr) { arr = []; this._pairsByOrig.set(key, arr); }
+          arr.push(it);
+          if (it.node) {
+            if (!this._doneNodes) this._doneNodes = new WeakSet();
+            if (!this._origByNode) this._origByNode = new WeakMap();
+            this._doneNodes.add(it.node);
+            this._origByNode.set(it.node, it.orig);
+          }
+        } catch (e2) {}
       }
       try {
         if (it.node) it.node.nodeValue = translated;
         else if (it.isTitle) document.title = translated;
         else if (it.el) it.el.setAttribute(it.attr, translated);
       } catch (e) {}
+    },
+
+    /** Reset translation tracking (pairs + node/text indexes). */
+    _resetTrack: function () {
+      this.pairs = [];
+      try {
+        this._doneNodes = new WeakSet();
+        this._origByNode = new WeakMap();
+        this._pairsByOrig = new Map();
+        this._noopTexts = new Set();
+      } catch (e) {}
+    },
+
+    /** Does this item need (re-)translation? Language-agnostic:
+     *  - no-op texts: never,
+     *  - already-translated node: only if the page reverted it,
+     *  - new node: skip if the same text is already translated and intact
+     *    elsewhere (ticker/duplicate), else translate. */
+    _needsTranslation: function (it) {
+      var self = this;
+      try {
+        var ck = it.clean || '';
+        if (ck && self._noopTexts && self._noopTexts.has(ck)) return false;
+      } catch (e) {}
+      if (!it.node) return true; // title/attribute items
+      var node = it.node, cur = null;
+      try { cur = node.nodeValue; } catch (e2) { return false; }
+      if (self._doneNodes && self._doneNodes.has(node)) {
+        var orig = self._origByNode ? self._origByNode.get(node) : null;
+        return orig != null && cur === orig;
+      }
+      var ps = self._pairsByOrig ? self._pairsByOrig.get(it.clean || '') : null;
+      if (ps) {
+        for (var i = 0; i < ps.length; i++) {
+          var p = ps[i];
+          try {
+            if (p.node && p.node.isConnected && p.node.nodeValue !== p.orig) return false;
+          } catch (e3) {}
+        }
+      }
+      return true;
+    },
+
+    /** Translate a list of prepared items (shared by flush and sweep). */
+    translateItems: function (items, target, source) {
+      var self = this;
+      var batches = this.makeBatches(items);
+      return (async function () {
+        var bi = 0;
+        async function worker() {
+          while (bi < batches.length) {
+            if (self.state !== 'translated') return;
+            var batch = batches[bi++];
+            try {
+              var parts = await self.translateBatch(
+                batch.map(function (b) { return b.clean; }), source, target);
+              batch.forEach(function (it, j) { self.applyItem(it, parts[j]); });
+            } catch (e) {}
+          }
+        }
+        var workers = [];
+        for (var w = 0; w < 4; w++) workers.push(worker());
+        await Promise.all(workers);
+      })();
     },
 
     makeBatches: function (items) {
@@ -634,13 +724,14 @@
       this._translatingSince = Date.now();
       this.emitState();
       this.cancelRequested = false;
-      this.pairs = [];
+      this._resetTrack();
+      this._noTextWarned = false;
       // 11-6: drop DOM references on navigation so detached nodes can GC.
       try {
         if (!this._pagehideHook) {
           this._pagehideHook = true;
           var self2 = this;
-          window.addEventListener('pagehide', function () { self2.pairs = []; });
+          window.addEventListener('pagehide', function () { self2._resetTrack(); });
         }
       } catch (e) {}
       this.renderBar('working');
@@ -735,7 +826,7 @@
           else if (it.el && it.orig !== null && it.orig !== undefined) it.el.setAttribute(it.attr, it.orig);
         } catch (e) {}
       });
-      this.pairs = [];
+      this._resetTrack();
     },
 
     restorePage: function () {
@@ -759,61 +850,21 @@
         if (self.state !== 'translated' || !pending.length) { pending = []; return; }
         var batch = pending;
         pending = [];
-        // 11-2/11-5: reset the visibility cache each flush (DOM changed), and
-        // skip texts already translated to avoid burning quota on tickers /
-        // live feeds that re-insert the same strings.
+        // 11-2/11-5: reset the visibility cache each flush (DOM changed).
         self._visCache = new Map();
-        var items = self.prepareItems(batch);
+        var items = self.prepareItems(batch).filter(function (it) {
+          return self._needsTranslation(it);
+        });
         if (!items.length) return;
         var target = self.targetLang();
-        // Only translate texts that actually look foreign to the target.
-        // (Replaces the old text-keyed `seen` dedup, which wrongly skipped
-        // survey options that the page's framework had reverted to the
-        // source language after our translation.)
-        if (self._latinTarget(target)) {
-          items = items.filter(function (it) { return self.looksForeign(it.clean, target); });
-          if (!items.length) return;
-        }
-        var source = self.detectedLang || 'auto';
-        var batches = self.makeBatches(items);
-        (async function () {
-          var bi = 0;
-          async function worker() {
-            while (bi < batches.length) {
-              if (self.state !== 'translated') return;
-              var batch = batches[bi++];
-              try {
-                var parts = await self.translateBatch(
-                  batch.map(function (b) { return b.clean; }), source, target);
-                batch.forEach(function (it, j) { self.applyItem(it, parts[j]); });
-              } catch (e) {}
-            }
-          }
-          var workers = [];
-          for (var w = 0; w < 4; w++) workers.push(worker());
-          await Promise.all(workers);
-        })();
+        self.translateItems(items, target, self.detectedLang || 'auto');
       }
-      // Text dedup, kept only for non-Latin targets (tickers/live feeds).
-      // For Latin targets the looksForeign filter in flush() handles this
-      // without breaking re-rendered survey options.
-      var seen = Object.create(null); // 11-2: hash set of translated texts
       var obs = new MutationObserver(function (muts) {
         if (self.state !== 'translated') return;
-        var latin = self._latinTarget(self.targetLang());
         muts.forEach(function (m) {
           if (m.type !== 'childList') return;
           Array.prototype.forEach.call(m.addedNodes, function (nd) {
-            var before = pending.length;
             self.collectSubtree(nd, pending);
-            if (!latin) {
-              // Drop texts we've already translated (live tickers re-insert).
-              for (var i = before; i < pending.length; i++) {
-                var key = pending[i].text;
-                if (seen[key]) { pending.splice(i, 1); i--; before--; }
-                else seen[key] = 1;
-              }
-            }
           });
         });
         if (pending.length && !timer) timer = setTimeout(flush, 1200);
@@ -822,10 +873,10 @@
         obs.observe(document.body || document.documentElement, { childList: true, subtree: true });
       } catch (e) { return; }
       this.observer = obs;
-      // Safety net: every 8s (up to ~5 min) re-scan for visible foreign text
-      // that slipped through — attribute-revealed content, framework
-      // re-renders, shadow-DOM widgets. This keeps survey options translated
-      // even when the page fights back.
+      // Safety net: every 8s (up to ~5 min) re-scan for visible text that
+      // still needs translation — attribute-revealed content, framework
+      // re-renders, shadow-DOM widgets. _needsTranslation() makes this
+      // precise for every world language (no heuristics).
       try {
         var sweeps = 0;
         var sweepTimer = setInterval(function () {
@@ -838,31 +889,11 @@
             self._visCache = new Map();
             self.collectSweep(document.body || document.documentElement, found);
             if (!found.length) return;
-            var sItems = self.prepareItems(found);
-            var sTarget = self.targetLang();
-            if (self._latinTarget(sTarget)) {
-              sItems = sItems.filter(function (it) { return self.looksForeign(it.clean, sTarget); });
-            }
+            var sItems = self.prepareItems(found).filter(function (it) {
+              return self._needsTranslation(it);
+            });
             if (!sItems.length) return;
-            var sSource = self.detectedLang || 'auto';
-            var sBatches = self.makeBatches(sItems);
-            (async function () {
-              var sbi = 0;
-              async function sWorker() {
-                while (sbi < sBatches.length) {
-                  if (self.state !== 'translated') return;
-                  var sb = sBatches[sbi++];
-                  try {
-                    var sParts = await self.translateBatch(
-                      sb.map(function (b) { return b.clean; }), sSource, sTarget);
-                    sb.forEach(function (it, j) { self.applyItem(it, sParts[j]); });
-                  } catch (e) {}
-                }
-              }
-              var sWorkers = [];
-              for (var w = 0; w < 4; w++) sWorkers.push(sWorker());
-              await Promise.all(sWorkers);
-            })();
+            self.translateItems(sItems, self.targetLang(), self.detectedLang || 'auto');
           } catch (e) {}
         }, 8000);
         this._sweepTimer = sweepTimer;

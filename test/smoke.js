@@ -385,8 +385,8 @@ t('settings listener guarded against dup (10-1)',
   /__CSB_SETTINGS_LISTENER/.test(src('src/content/01-storage.js')));
 t('isVisible checks ancestors via checkVisibility (11-1)',
   /checkVisibility/.test(src('src/content/11-page-translate.js')));
-t('observer skips already-translated texts (11-2)',
-  /seen\[key\]/.test(src('src/content/11-page-translate.js')));
+t('observer skips already-translated texts (11-2, via _needsTranslation)',
+  /_needsTranslation/.test(src('src/content/11-page-translate.js')));
 t('collectSubtree checks visibility (11-3)',
   /!self\.isVisible\(nd\)/.test(src('src/content/11-page-translate.js')));
 t('dropdown options are translated (options bypass visibility)',
@@ -414,8 +414,10 @@ t('translatePage has a stuck-state watchdog',
   /_translatingSince/.test(src('src/content/11-page-translate.js')));
 t('late-content observer re-runs detection on slow pages',
   /_lateHook/.test(src('src/content/11-page-translate.js')));
-t('survey option re-renders are re-translated (no text dedup)',
-  /looksForeign\(it\.clean/.test(src('src/content/11-page-translate.js')));
+t('survey option re-renders are re-translated (node tracking, all languages)',
+  /_needsTranslation/.test(src('src/content/11-page-translate.js')) &&
+  /_doneNodes/.test(src('src/content/11-page-translate.js')) &&
+  /_pairsByOrig/.test(src('src/content/11-page-translate.js')));
 t('sweep re-scans for missed foreign text',
   /collectSweep/.test(src('src/content/11-page-translate.js')));
 t('wrong html lang attribute is verified against text',
