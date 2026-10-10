@@ -27,7 +27,8 @@
         '</div>' +
         '<button class="csb-btn csb-btn-primary csb-btn-block" id="csb-shot-go" type="button">📸 FULL PAGE SCREENSHOT</button>' +
         '<div class="csb-row" style="margin-top:10px">' +
-          '<button class="csb-btn csb-btn-ghost" id="csb-shot-dl" type="button" style="flex:1">💾 DOWNLOAD</button>' +
+          '<button class="csb-btn csb-btn-ghost" id="csb-shot-copy" type="button" style="flex:1" disabled>📋 COPY</button>' +
+          '<button class="csb-btn csb-btn-ghost" id="csb-shot-dl" type="button" style="flex:1" disabled>💾 DOWNLOAD</button>' +
         '</div>' +
         '<div class="csb-status" id="csb-shot-status"><span class="csb-dot"></span><span>Ready</span></div>' +
         '<div id="csb-shot-preview" style="display:none"></div>' +
@@ -39,6 +40,7 @@
         capBtn: q('#csb-shot-go'),
         modeFull: q('#csb-shot-mode-full'),
         modeArea: q('#csb-shot-mode-area'),
+        copyBtn: q('#csb-shot-copy'),
         dlBtn: q('#csb-shot-dl'),
         status: q('#csb-shot-status'),
         previewWrap: q('#csb-shot-preview')
@@ -47,6 +49,7 @@
       q('#csb-shot-mode-full').addEventListener('click', function () { self.setMode('full'); });
       q('#csb-shot-mode-area').addEventListener('click', function () { self.setMode('area'); });
       q('#csb-shot-go').addEventListener('click', function () { self.capture(); });
+      q('#csb-shot-copy').addEventListener('click', function () { self.copy(); });
       q('#csb-shot-dl').addEventListener('click', function () { self.download(); });
       this.setMode('full');
       this.render();
@@ -73,6 +76,7 @@
     render: function () {
       if (!this.el) return;
       this.el.capBtn.disabled = this.busy;
+      this.el.copyBtn.disabled = !this.hasShot || this.busy;
       this.el.dlBtn.disabled = !this.hasShot || this.busy;
     },
 
