@@ -176,12 +176,16 @@
       } catch (e2) {}
     }
     try { walk(document.body); } catch (e3) {}
-    // Attributes: placeholders, alt text, titles.
+    // Attributes: placeholders, alt text, titles, submit-button labels.
     try {
-      var els = document.body.querySelectorAll('input[placeholder],textarea[placeholder],[alt],[title]');
+      var els = document.body.querySelectorAll(
+        'input[placeholder],textarea[placeholder],[alt],[title],' +
+        'input[type=submit][value],input[type=button][value],input[type=reset][value]');
       for (var i = 0; i < els.length && items.length < 1800; i++) {
         (function (el) {
-          ['placeholder', 'alt', 'title'].forEach(function (at) {
+          var attrs = ['placeholder', 'alt', 'title'];
+          if (el.tagName === 'INPUT' && /^(submit|button|reset)$/i.test(el.type || '')) attrs.push('value');
+          attrs.forEach(function (at) {
             var v = null;
             try { v = el.getAttribute(at); } catch (e) {}
             if (v && v.trim() && MEANINGFUL.test(v)) items.push({ el: el, attr: at, text: v });
@@ -189,6 +193,19 @@
         })(els[i]);
       }
     } catch (e4) {}
+    // <option> labels: no CSS boxes, collect explicitly.
+    try {
+      var opts = document.body.querySelectorAll('option');
+      for (var oi = 0; oi < opts.length && items.length < 2000; oi++) {
+        var opt = opts[oi];
+        var tn = opt.firstChild;
+        while (tn && tn.nodeType !== 3) tn = tn.nextSibling;
+        if (!tn) continue;
+        var ot = tn.nodeValue;
+        if (!ot || !ot.trim() || !MEANINGFUL.test(ot)) continue;
+        items.push({ node: tn, text: ot });
+      }
+    } catch (e5) {}
     return items;
   }
 
@@ -268,11 +285,15 @@
     }
     if (nd.nodeType !== 1 || SKIP.test(nd.tagName)) return;
     // Attributes on the added element itself.
-    ['placeholder', 'alt', 'title'].forEach(function (at) {
-      var v = null;
-      try { v = nd.getAttribute(at); } catch (e) {}
-      if (v && v.trim() && MEANINGFUL.test(v)) out.push({ el: nd, attr: at, text: v });
-    });
+    (function (el) {
+      var attrs = ['placeholder', 'alt', 'title'];
+      if (el.tagName === 'INPUT' && /^(submit|button|reset)$/i.test(el.type || '')) attrs.push('value');
+      attrs.forEach(function (at) {
+        var v = null;
+        try { v = el.getAttribute(at); } catch (e) {}
+        if (v && v.trim() && MEANINGFUL.test(v)) out.push({ el: el, attr: at, text: v });
+      });
+    })(nd);
     try {
       var walker = document.createTreeWalker(nd, NodeFilter.SHOW_TEXT, null);
       var n;
@@ -281,10 +302,14 @@
         if (t2) out.push({ node: n, text: t2 });
       }
       // Attributes on descendants.
-      var els = nd.querySelectorAll('input[placeholder],textarea[placeholder],[alt],[title]');
+      var els = nd.querySelectorAll(
+        'input[placeholder],textarea[placeholder],[alt],[title],' +
+        'input[type=submit][value],input[type=button][value],input[type=reset][value]');
       for (var i = 0; i < els.length; i++) {
         (function (el) {
-          ['placeholder', 'alt', 'title'].forEach(function (at2) {
+          var attrs = ['placeholder', 'alt', 'title'];
+          if (el.tagName === 'INPUT' && /^(submit|button|reset)$/i.test(el.type || '')) attrs.push('value');
+          attrs.forEach(function (at2) {
             var v2 = null;
             try { v2 = el.getAttribute(at2); } catch (e2) {}
             if (v2 && v2.trim() && MEANINGFUL.test(v2)) out.push({ el: el, attr: at2, text: v2 });

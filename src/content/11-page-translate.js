@@ -479,16 +479,10 @@
         items.push({ isTitle: true, text: document.title });
       }
       try {
-        var els = document.body.querySelectorAll('[placeholder],[alt],[title]');
+        var els = document.body.querySelectorAll('[placeholder],[alt],[title],' +
+          'input[type=submit][value],input[type=button][value],input[type=reset][value]');
         for (var i = 0; i < els.length && items.length < MAX_NODES + 300; i++) {
-          (function (el) {
-            if (el.closest && el.closest('[data-csb-ui],#cashskillbd-host,#cashskillbd-pt-host')) return;
-            if (/^(SCRIPT|STYLE|NOSCRIPT)$/.test(el.tagName)) return;
-            ['placeholder', 'alt', 'title'].forEach(function (at) {
-              var v = el.getAttribute ? el.getAttribute(at) : null;
-              if (v && v.trim() && MEANINGFUL.test(v)) items.push({ el: el, attr: at, text: v });
-            });
-          })(els[i]);
+          this.collectAttrs(els[i], items);
         }
       } catch (e) {}
       return items;
@@ -506,12 +500,37 @@
       if (SKIP_TAGS.test(nd.tagName)) return;
       // <option> has no CSS box — never gate it on visibility.
       if (nd.tagName !== 'OPTION' && !self.isVisible(nd)) return; // 11-3: don't translate hidden dynamic nodes
+      // Attributes on the added element itself (placeholder, alt, title,
+      // submit-button labels).
+      self.collectAttrs(nd, out);
       try {
         var walker = document.createTreeWalker(nd, NodeFilter.SHOW_TEXT, null);
         var n;
         while ((n = walker.nextNode())) {
           var t2 = self.acceptTextNode(n);
           if (t2) out.push({ node: n, text: t2 });
+        }
+        // Attributes on descendants.
+        var els = nd.querySelectorAll(
+          '[placeholder],[alt],[title],' +
+          'input[type=submit][value],input[type=button][value],input[type=reset][value]');
+        for (var i = 0; i < els.length; i++) self.collectAttrs(els[i], out);
+      } catch (e) {}
+    },
+
+    /** Collect translatable attributes (placeholder/alt/title + visible
+     * button labels) from one element. Never touches text-input values. */
+    collectAttrs: function (el, out) {
+      try {
+        if (el.closest && el.closest('[data-csb-ui],#cashskillbd-host,#cashskillbd-pt-host')) return;
+        if (/^(SCRIPT|STYLE|NOSCRIPT)$/.test(el.tagName)) return;
+        var attrs = ['placeholder', 'alt', 'title'];
+        if (el.tagName === 'INPUT' && /^(submit|button|reset)$/i.test(el.type || '')) {
+          attrs.push('value'); // the visible label of submit/button inputs
+        }
+        for (var k = 0; k < attrs.length; k++) {
+          var v = el.getAttribute ? el.getAttribute(attrs[k]) : null;
+          if (v && v.trim() && MEANINGFUL.test(v)) out.push({ el: el, attr: attrs[k], text: v });
         }
       } catch (e) {}
     },
