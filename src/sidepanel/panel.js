@@ -332,21 +332,8 @@
     safeBuild('ocr', function () { if (CSB.ocrPanelUI) CSB.ocrPanelUI.build(panesEl.ocr); });
     safeBuild('settings', function () { if (CSB.settingsUI) CSB.settingsUI.build(panesEl.settings); });
 
-    await resolveTab();
-    // Self-heal stale tabs (opened before install/update): make sure our
-    // content scripts are in the tab so commands don't error.
-    if (currentTabId != null) {
-      try {
-        await chrome.tabs.sendMessage(currentTabId, { type: 'CSB_PING' });
-      } catch (e) {
-        if (/receiving end does not exist|could not establish connection/i.test(String((e && e.message) || ''))) {
-          try { await chrome.runtime.sendMessage({ type: 'CSB_ENSURE_CONTENT', tabId: currentTabId }); } catch (e2) {}
-        }
-      }
-    }
-    await CSB.pageTranslate.refresh();
-    refreshPageCard();
-
+    // Show the UI immediately — don't let slow tab operations block it.
+    // switchTab runs BEFORE any network/tab calls that might hang.
     var last = 'typing';
     try {
       if (CSB.settings.get('panel.rememberLastTab', true)) {
@@ -356,6 +343,26 @@
     } catch (e) {}
     switchTab(last, false);
     consumePendingCommand();
+
+    // Non-blocking: tab-dependent operations run after UI is visible.
+    // If the tab is slow/unresponsive, the panel stays usable.
+    (async function () {
+      await resolveTab();
+      // Self-heal stale tabs (opened before install/update): make sure our
+      // content scripts are in the tab so commands don't error.
+      if (currentTabId != null) {
+        try {
+          await chrome.tabs.sendMessage(currentTabId, { type: 'CSB_PING' });
+        } catch (e) {
+          if (/receiving end does not exist|could not establish connection/i.test(String((e && e.message) || ''))) {
+            try { await chrome.runtime.sendMessage({ type: 'CSB_ENSURE_CONTENT', tabId: currentTabId }); } catch (e2) {}
+          }
+        }
+      }
+      try { await CSB.pageTranslate.refresh(); } catch (e) {}
+      refreshPageCard();
+    })();
+
     // Automatic update check: pops up only when a new, undismissed
     // release exists (throttled to once a day).
     if (CSB.settingsUI && CSB.settingsUI.autoCheck) {
