@@ -91,7 +91,8 @@
     "notifications",
     "clipboardWrite",
     "sidePanel",
-    "debugger"
+    "debugger",
+    "offscreen"
   ],
   "short_name": "CashSkill",
   "version": "0.0.1",

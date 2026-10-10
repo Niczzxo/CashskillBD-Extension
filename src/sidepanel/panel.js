@@ -343,15 +343,26 @@
 
     // Show the UI immediately — don't let slow tab operations block it.
     // switchTab runs BEFORE any network/tab calls that might hang.
-    var last = 'typing';
-    try {
-      if (CSB.settings.get('panel.rememberLastTab', true)) {
-        var r = await chrome.storage.session.get('csb_last_tab');
-        if (r && r.csb_last_tab && panesEl[r.csb_last_tab]) last = r.csb_last_tab;
-      }
-    } catch (e) {}
-    switchTab(last, false);
+    // Use default tab immediately; update to last tab when storage responds.
+    switchTab('typing', false);
     consumePendingCommand();
+
+    // Load last tab asynchronously with timeout — never block UI.
+    (async function () {
+      try {
+        if (CSB.settings.get('panel.rememberLastTab', true)) {
+          var r = await Promise.race([
+            chrome.storage.session.get('csb_last_tab'),
+            new Promise(function (_, reject) {
+              setTimeout(function () { reject(new Error('timeout')); }, 2000);
+            })
+          ]);
+          if (r && r.csb_last_tab && panesEl[r.csb_last_tab] && r.csb_last_tab !== 'typing') {
+            switchTab(r.csb_last_tab, false);
+          }
+        }
+      } catch (e) {}
+    })();
 
     // Non-blocking: tab-dependent operations run after UI is visible.
     // If the tab is slow/unresponsive, the panel stays usable.

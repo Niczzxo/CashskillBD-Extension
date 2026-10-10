@@ -247,15 +247,39 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   if (msg.type === 'CSB_CLIPBOARD_WRITE_TEXT') {
-    // Service worker has clipboardWrite permission; can write without user activation.
-    try {
-      navigator.clipboard.writeText(msg.text || '').then(
-        () => sendResponse({ ok: true }),
-        (err) => sendResponse({ ok: false, error: String((err && err.message) || err) })
-      );
-    } catch (e) {
-      sendResponse({ ok: false, error: String((e && e.message) || e) });
-    }
+    // Use offscreen document for reliable clipboard write without user activation.
+    (async function () {
+      try {
+        // Ensure offscreen document exists
+        var hasDoc = false;
+        try {
+          var clients = await chrome.offscreen.hasDocument();
+          hasDoc = !!clients;
+        } catch (e) {}
+        if (!hasDoc) {
+          await chrome.offscreen.createDocument({
+            url: 'src/offscreen/offscreen.html',
+            reasons: ['CLIPBOARD'],
+            justification: 'Copy OCR/translation text to clipboard'
+          });
+        }
+        // Send to offscreen document
+        chrome.runtime.sendMessage(
+          { type: 'CSB_OFFSCREEN_COPY_TEXT', text: msg.text || '' },
+          function (res) {
+            sendResponse(res || { ok: false, error: 'no response' });
+          }
+        );
+      } catch (e) {
+        // Fallback: try direct clipboard
+        try {
+          await navigator.clipboard.writeText(msg.text || '');
+          sendResponse({ ok: true });
+        } catch (e2) {
+          sendResponse({ ok: false, error: String((e2 && e2.message) || e2) });
+        }
+      }
+    })();
     return true; // async response
   }
 
