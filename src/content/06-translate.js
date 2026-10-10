@@ -348,6 +348,10 @@
         card.innerHTML =
           '<h3>🌐 This page</h3>' +
           '<div class="csb-hint" id="csb-tr-pageinfo" style="margin-bottom:10px">—</div>' +
+          '<div class="csb-row" style="margin-bottom:10px;align-items:center">' +
+            '<span class="csb-hint">Translate to:</span>' +
+            '<select class="csb-select" id="csb-tr-pagetgt" aria-label="Page translation target language"></select>' +
+          '</div>' +
           '<div class="csb-row">' +
             '<button class="csb-btn csb-btn-primary csb-btn-sm" id="csb-tr-pagego" type="button">Translate page</button>' +
             '<button class="csb-btn csb-btn-ghost csb-btn-sm" id="csb-tr-pagerestore" type="button">Show original</button>' +
@@ -356,6 +360,18 @@
         var info = card.querySelector('#csb-tr-pageinfo');
         var go = card.querySelector('#csb-tr-pagego');
         var rs = card.querySelector('#csb-tr-pagerestore');
+        var tgtSel = card.querySelector('#csb-tr-pagetgt');
+        langCodes().forEach(function (c) {
+          var o = document.createElement('option');
+          o.value = c; o.textContent = LANG_NAMES[c];
+          tgtSel.appendChild(o);
+        });
+        // The page target language: pick once here, every page auto-shows in it.
+        tgtSel.value = CSB.pageTranslate.targetLang();
+        tgtSel.addEventListener('change', function () {
+          CSB.settings.set('translation.targetLanguage', tgtSel.value);
+          refresh();
+        });
         function refresh() {
           var ptx = CSB.pageTranslate;
           if (ptx.detectedLang) {

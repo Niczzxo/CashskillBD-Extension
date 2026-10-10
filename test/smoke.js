@@ -176,7 +176,7 @@ t('overlay/modal accept pointer events (no click-through)',
 
 console.log('sidepanel architecture:');
 const manifest = JSON.parse(src('manifest.json'));
-t('manifest version 0.0.1.0', manifest.version === '0.0.1.0');
+t('manifest version 0.0.1.2', manifest.version === '0.0.1.2');
 t('debugger permission for pixel-perfect screenshots', manifest.permissions.includes('debugger'));
 t('sidePanel permission', manifest.permissions.includes('sidePanel'));
 t('side_panel default_path', manifest.side_panel && manifest.side_panel.default_path === 'src/sidepanel/panel.html');
@@ -403,6 +403,10 @@ t('on-device language detection fallback (chrome.i18n)',
   /detectLanguage/.test(src('src/content/11-page-translate.js')));
 t('SPA navigation re-triggers detection',
   /_spaHook/.test(src('src/content/11-page-translate.js')));
+t('page card has target language selector',
+  /csb-tr-pagetgt/.test(src('src/content/06-translate.js')));
+t('last-resort auto-translate when detection fails',
+  /looksForeign/.test(src('src/content/11-page-translate.js')));
 t('detect uses targetLang with timeout (11-4/11-7)',
   /this\.targetLang\(\)/.test(src('src/content/11-page-translate.js')) && /detect timeout/.test(src('src/content/11-page-translate.js')));
 t('pairs cleared on pagehide (11-6)',

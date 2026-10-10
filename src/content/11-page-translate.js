@@ -131,16 +131,28 @@
           return;
         }
         var self2 = this;
+        var autoT = CSB.settings.get('pageTranslate.autoTranslate', true);
         // On-device detection first (works offline); endpoint as backup.
-        this.detectLocal(sample).then(function (lang) {
-          if (lang) self2.onDetected(lang);
-          else self2.detectRemote(sample);
+        // Low-confidence non-target guesses still auto-translate when the
+        // page really looks foreign — the provider detects per batch with
+        // source=auto, so no manual click is ever needed.
+        this.detectLocal(sample).then(function (r) {
+          var code = r && r.code;
+          var pct = (r && r.percentage) || 0;
+          if (code && code !== target && pct >= 40) { self2.onDetected(code); return; }
+          if (code && code === target && pct >= 50) return; // page is in target language
+          if (code && code !== target && autoT && self2.looksForeign(sample, target)) {
+            self2.translatePage();
+            return;
+          }
+          self2.detectRemote(sample);
         });
       } catch (e) { /* never break the page */ }
     },
 
     /** On-device language detection via Chrome's built-in CLD.
-     * Resolves to a 2-letter code, or null when unavailable/unsure. */
+     * Resolves to {code, percentage} (top guess), or null when
+     * unavailable. Confidence filtering happens at the call site. */
     detectLocal: function (sample) {
       return new Promise(function (resolve) {
         var done = false;
@@ -156,10 +168,9 @@
               var top = langs[0];
               var code = top && top.language
                 ? String(top.language).toLowerCase().split(/[-_]/)[0] : '';
-              // Require reasonable confidence; skip unknown codes.
-              if (code && top.percentage >= 40 &&
-                  CSB.translate.langName(code) !== code.toUpperCase()) {
-                fin(code);
+              // Skip unknown codes.
+              if (code && CSB.translate.langName(code) !== code.toUpperCase()) {
+                fin({ code: code, percentage: top.percentage || 0 });
               } else {
                 fin(null);
               }
@@ -169,12 +180,37 @@
       });
     },
 
+    /** Heuristic: does the text look like it's NOT in the target language?
+     * Script-agnostic — measures the share of non-ASCII letters. Used as a
+     * last resort so auto-translate never needs a manual click. */
+    looksForeign: function (sample, target) {
+      try {
+        var letters = sample.match(/\p{L}/gu) || [];
+        if (!letters.length) return false;
+        var nonAscii = 0;
+        for (var i = 0; i < letters.length; i++) {
+          if (letters[i].codePointAt(0) > 127) nonAscii++;
+        }
+        return nonAscii / letters.length > 0.08;
+      } catch (e) { return false; }
+    },
+
     /** Network detection via the translation provider (backup). */
     detectRemote: function (sample) {
       var self = this;
       this.detectViaEndpoint(sample).then(
         function (lang) { self.onDetected(lang); },
-        function () { /* detection failed — stay silent */ }
+        function () {
+          // Last resort: autoTranslate is on and the page really looks
+          // foreign — translate with source=auto; the provider detects
+          // per batch, so the user never has to click manually.
+          try {
+            if (CSB.settings.get('pageTranslate.autoTranslate', true) &&
+                self.looksForeign(sample, self.targetLang())) {
+              self.translatePage();
+            }
+          } catch (e) {}
+        }
       );
     },
 
