@@ -182,10 +182,16 @@
       var sName = CSB.translate.langName(this.detectedLang);
       var html = '';
       if (mode === 'prompt') {
+        // If detection never succeeded (offline/blocked endpoint, or the user
+        // translated manually with source=auto then hit "Show original"),
+        // never claim "Unknown" — say what we actually know.
+        var langBit = this.detectedLang
+          ? 'This page is in <b>' + U.esc(sName) + '</b>.'
+          : 'This page may not be in <b>' + U.esc(tName) + '</b>.';
         html =
           '<div class="csb-pt-bar" role="dialog" aria-label="Translate this page">' +
             '<span class="csb-pt-globe">🌐</span>' +
-            '<span class="csb-pt-text">This page is in <b>' + U.esc(sName) + '</b>.</span>' +
+            '<span class="csb-pt-text">' + langBit + '</span>' +
             '<button class="csb-btn csb-btn-primary csb-btn-sm" data-act="go" type="button">Translate to ' + U.esc(tName) + '</button>' +
             '<button class="csb-btn csb-btn-ghost csb-btn-sm" data-act="never" type="button">Never for this site</button>' +
             '<button class="csb-pt-x" data-act="hide" type="button" aria-label="Dismiss">×</button>' +
@@ -379,6 +385,12 @@
       var provider = CSB.translate.currentProvider();
       var joined = texts.join('\n');
       var out = await provider.detectAndTranslate(joined, source, target);
+      // Remember what the provider detected — if pre-translation detection
+      // failed, this lets the prompt bar / panel show the real language.
+      try {
+        var det = String((out && out.detected) || '').toLowerCase().split(/[-_]/)[0];
+        if (det && det !== 'auto' && det !== 'und') this._batchDetected = det;
+      } catch (e) {}
       var parts = String(out.translated || '').split('\n');
       if (parts.length === texts.length) return parts;
       // Line count mismatched — fall back to one request per text.
@@ -494,6 +506,11 @@
             var parts = await self.translateBatch(
               batch.map(function (b) { return b.clean; }), source, target);
             batch.forEach(function (it, i) { self.applyItem(it, parts[i]); });
+            // Adopt the provider's detected language when pre-detection failed.
+            if (!self.detectedLang && self._batchDetected && self._batchDetected !== target) {
+              self.detectedLang = self._batchDetected;
+              self.emitState();
+            }
           } catch (e) {
             // Keep originals for this batch, but remember why it failed so
             // the final message can say something useful.

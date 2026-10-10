@@ -394,6 +394,10 @@ t('dropdown options are translated (options bypass visibility)',
   /querySelectorAll\('option'\)/.test(src('src/content/11-page-translate.js')));
 t('optgroup labels are translated',
   /optgroup\[label\]/.test(src('src/content/11-page-translate.js')));
+t('prompt bar never shows "Unknown" language',
+  /may not be in/.test(src('src/content/11-page-translate.js')));
+t('batch detected language is adopted',
+  /_batchDetected/.test(src('src/content/11-page-translate.js')));
 t('detect uses targetLang with timeout (11-4/11-7)',
   /this\.targetLang\(\)/.test(src('src/content/11-page-translate.js')) && /detect timeout/.test(src('src/content/11-page-translate.js')));
 t('pairs cleared on pagehide (11-6)',
