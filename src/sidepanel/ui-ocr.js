@@ -54,6 +54,8 @@
 
     select: function () {
       var self = this;
+      // Don't start a new selection if one is already in progress
+      if (this.busy) return;
       this.busy = true;
       this.render();
       // Watchdog: Esc-cancel or a lost tab must not wedge the UI (O-1).

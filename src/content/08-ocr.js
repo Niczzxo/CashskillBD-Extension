@@ -195,7 +195,12 @@
     cancelSelection: function () {
       if (this._cleanupOverlay) { try { this._cleanupOverlay(); } catch (e) {} this._cleanupOverlay = null; }
       this.overlay = null;
-      if (this.state === 'SELECTING') { this.state = 'READY'; this.render(); }
+      if (this.state === 'SELECTING') {
+        this.state = 'READY';
+        this.render();
+        // Notify panel to reset its busy state
+        if (CSB.bridge) { try { CSB.bridge.emit('ocr.status', { kind: '', msg: 'Ready' }); } catch (e) {} }
+      }
     },
 
     /* ---------- capture + OCR ---------- */
@@ -261,10 +266,13 @@
         // Send the captured image to the panel for OCR.
         // (Panel runs in extension context with our CSP, avoiding page CSP issues.)
         var imageDataUrl = work.toDataURL('image/png');
-        this.state = 'PROCESSING';
-        this.setStatus('busy', 'Extracting text…');
         if (CSB.bridge) { try { CSB.bridge.emit('ocr.image', { image: imageDataUrl }); } catch (e) {} }
-        // The panel will do OCR and send back 'ocr.result' with the text.
+        // Reset to READY so a new selection can start immediately.
+        // The panel handles OCR and shows the result.
+        this.state = 'READY';
+        this.setStatus('', 'Ready');
+        this.render();
+        // The panel will do OCR and show the result.
       } catch (e) {
         this.state = 'ERROR';
         this.setStatus('err', (e && e.message) || 'No readable text was detected.');
