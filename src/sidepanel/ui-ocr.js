@@ -22,13 +22,16 @@
         '<p class="csb-hint" style="margin:0 0 10px">Select an area — the text is copied automatically. Works on images, canvas text, and non-selectable content.</p>' +
         '<button class="csb-btn csb-btn-primary csb-btn-block" id="csb-ocr-go" type="button">🔤 START SELECTION</button>' +
         '<div class="csb-status" id="csb-ocr-status"><span class="csb-dot"></span><span>Ready</span></div>' +
-        '<button class="csb-btn csb-btn-ghost csb-btn-block" id="csb-ocr-copy-last" type="button" style="margin-top:10px">📋 COPY LAST TEXT</button>';
+        '<h3 style="margin-top:12px">Detected text</h3>' +
+        '<div class="csb-result" id="csb-ocr-result" aria-live="polite" style="min-height:60px;max-height:200px;overflow-y:auto;white-space:pre-wrap"></div>' +
+        '<button class="csb-btn csb-btn-ghost csb-btn-block" id="csb-ocr-copy-last" type="button" style="margin-top:10px">📋 COPY TEXT</button>';
       pane.appendChild(card);
 
       var q = function (sel) { return pane.querySelector(sel); };
       this.el = {
         startBtn: q('#csb-ocr-go'),
-        status: q('#csb-ocr-status')
+        status: q('#csb-ocr-status'),
+        result: q('#csb-ocr-result')
       };
 
       q('#csb-ocr-go').addEventListener('click', function () { self.select(); });
@@ -114,8 +117,10 @@
         if (d.text) {
           this.setStatus('ok', 'Text extracted and copied.');
           this.resultText = d.text;
+          if (this.el.result) this.el.result.textContent = d.text;
         } else {
           this.setStatus('', 'No text found in the selected region.');
+          if (this.el.result) this.el.result.textContent = '';
         }
         this.render();
       } else if (evt === 'ocr.text') {
@@ -125,8 +130,10 @@
         if (d.text) {
           this.setStatus('ok', 'Text extracted and copied.');
           this.resultText = d.text;
+          if (this.el.result) this.el.result.textContent = d.text;
         } else {
           this.setStatus('', 'No text found in the selected region.');
+          if (this.el.result) this.el.result.textContent = '';
         }
         this.render();
       }
@@ -158,6 +165,7 @@
         if (this._watchdog) { clearTimeout(this._watchdog); this._watchdog = null; }
         if (text) {
           this.resultText = text;
+          if (this.el.result) this.el.result.textContent = text;
           // Auto-copy via service worker (has clipboardWrite permission).
           var self = this;
           if (CSB.settings.get('ocr.autoCopy', true)) {
@@ -168,7 +176,7 @@
                   self.setStatus('ok', 'Text extracted and copied.');
                   CSB.panel.toast('Text copied');
                 } else {
-                  self.setStatus('ok', 'Text extracted. Click COPY LAST TEXT to copy.');
+                  self.setStatus('ok', 'Text extracted. Click COPY TEXT to copy.');
                 }
                 self.render();
               }
@@ -178,6 +186,7 @@
           }
         } else {
           this.setStatus('', 'No text found in the selected region.');
+          if (this.el.result) this.el.result.textContent = '';
         }
       } catch (e) {
         this.busy = false;
