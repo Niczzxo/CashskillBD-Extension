@@ -73,13 +73,38 @@
       if (this._prompted) return;
       this._prompted = true;
       this._detectTries = 0;
+      // SPA navigation: re-detect when the URL changes without a full reload,
+      // but only if we never translated (translated pages are covered by the
+      // MutationObserver). Covers back/forward + hash routers.
+      try {
+        if (!this._spaHook) {
+          this._spaHook = true;
+          var self = this;
+          var recheck = function () {
+            if (self.state === 'idle') {
+              self._detectTries = 0;
+              self.detectedLang = null;
+              self.tryDetect();
+            }
+          };
+          window.addEventListener('popstate', function () { setTimeout(recheck, 1500); });
+          window.addEventListener('hashchange', function () { setTimeout(recheck, 1500); });
+        }
+      } catch (e) {}
       this.tryDetect();
     },
 
     /** Detect with retries: heavy pages (SPA) may not have text yet at
      * injection time, so a too-short sample is retried a few times.
      * Detection always runs (auto-translate needs it); only the prompt
-     * bar itself is gated on the prompt setting. */
+     * bar itself is gated on the prompt setting.
+     *
+     * Detection chain (first hit wins):
+     *   1. trusted <html lang>
+     *   2. chrome.i18n.detectLanguage — on-device CLD, no network needed
+     *   3. provider endpoint (network)
+     * With autoTranslate on (default), a detected foreign language means
+     * the page is translated automatically — no manual step. */
     tryDetect: function () {
       try {
         var host = location.hostname || '';
@@ -106,11 +131,51 @@
           return;
         }
         var self2 = this;
-        this.detectViaEndpoint(sample).then(
-          function (lang) { self2.onDetected(lang); },
-          function () { /* detection failed — stay silent */ }
-        );
+        // On-device detection first (works offline); endpoint as backup.
+        this.detectLocal(sample).then(function (lang) {
+          if (lang) self2.onDetected(lang);
+          else self2.detectRemote(sample);
+        });
       } catch (e) { /* never break the page */ }
+    },
+
+    /** On-device language detection via Chrome's built-in CLD.
+     * Resolves to a 2-letter code, or null when unavailable/unsure. */
+    detectLocal: function (sample) {
+      return new Promise(function (resolve) {
+        var done = false;
+        function fin(v) { if (!done) { done = true; resolve(v); } }
+        try {
+          if (!chrome.i18n || !chrome.i18n.detectLanguage) return fin(null);
+          var timer = setTimeout(function () { fin(null); }, 8000);
+          chrome.i18n.detectLanguage(sample.slice(0, 2000), function (res) {
+            clearTimeout(timer);
+            try {
+              var langs = ((res && res.languages) || []).slice(0);
+              langs.sort(function (a, b) { return (b.percentage || 0) - (a.percentage || 0); });
+              var top = langs[0];
+              var code = top && top.language
+                ? String(top.language).toLowerCase().split(/[-_]/)[0] : '';
+              // Require reasonable confidence; skip unknown codes.
+              if (code && top.percentage >= 40 &&
+                  CSB.translate.langName(code) !== code.toUpperCase()) {
+                fin(code);
+              } else {
+                fin(null);
+              }
+            } catch (e) { fin(null); }
+          });
+        } catch (e) { fin(null); }
+      });
+    },
+
+    /** Network detection via the translation provider (backup). */
+    detectRemote: function (sample) {
+      var self = this;
+      this.detectViaEndpoint(sample).then(
+        function (lang) { self.onDetected(lang); },
+        function () { /* detection failed — stay silent */ }
+      );
     },
 
     sampleText: function () {
