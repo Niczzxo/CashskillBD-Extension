@@ -265,6 +265,14 @@
           });
         } catch (e) { resolve(false); }
       });
+      // Wait for Tesseract to become available (injection is async).
+      // Retry up to 5 times with 500ms delay.
+      for (var i = 0; i < 5; i++) {
+        if (typeof Tesseract !== 'undefined' && Tesseract.createWorker) {
+          return;
+        }
+        await new Promise(function (r) { setTimeout(r, 500); });
+      }
       if (!ok || typeof Tesseract === 'undefined') {
         self._enginePromise = null; // allow retry on failure
         throw new Error('OCR engine failed to load.');
