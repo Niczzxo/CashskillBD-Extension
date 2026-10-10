@@ -159,11 +159,19 @@
         if (!Tesseract.recognize) {
           throw new Error('Tesseract.recognize not available');
         }
-        // Step 2: Recognize with bundled resources
+        // Step 2: Fetch worker script and create blob URL
+        // (chrome-extension:// URLs fail in importScripts)
         var base = chrome.runtime.getURL('src/lib/tesseract');
+        var workerCode = await fetch(base + '/worker.min.js').then(function (r) {
+          if (!r.ok) throw new Error('Worker script fetch failed: ' + r.status);
+          return r.text();
+        });
+        var workerBlob = new Blob([workerCode], { type: 'application/javascript' });
+        var workerBlobUrl = URL.createObjectURL(workerBlob);
+        // Step 3: Recognize with blob worker URL
         var res = await Promise.race([
           Tesseract.recognize(imageDataUrl, 'eng', {
-            workerPath: base + '/worker.min.js',
+            workerPath: workerBlobUrl,
             corePath: base + '/tesseract-core.wasm.js',
             langPath: base + '/lang/',
             logger: function () {}
@@ -172,6 +180,7 @@
             setTimeout(function () { reject(new Error('OCR timed out after 60s')); }, 60000);
           })
         ]);
+        try { URL.revokeObjectURL(workerBlobUrl); } catch (e) {}
         var text = (res && res.data && res.data.text || '').trim();
         this.busy = false;
         if (this.el) {
