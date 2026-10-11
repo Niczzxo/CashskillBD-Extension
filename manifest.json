@@ -40,7 +40,7 @@
       "description": "Start screen text selection (OCR)"
     }
   },
-  "description": "Learn \u2022 Earn \u2022 Grow \u2014 Human-like auto typing, auto language detection + English translation, full-page screenshot, and screen text select with OCR.",
+  "description": "Learn • Earn • Grow — Human-like auto typing, auto language detection + English translation, full-page screenshot, and screen text select with OCR.",
   "content_scripts": [
     {
       "matches": [
@@ -57,6 +57,7 @@
         "<all_urls>"
       ],
       "js": [
+        "src/content/00-license.js",
         "src/content/00-util.js",
         "src/content/01-storage.js",
         "src/content/02-styles.js",
@@ -77,6 +78,7 @@
         "<all_urls>"
       ],
       "js": [
+        "src/content/00-license.js",
         "src/content/14-iframe-translate.js"
       ],
       "run_at": "document_idle",
@@ -102,7 +104,8 @@
     "clipboardWrite",
     "sidePanel",
     "debugger",
-    "offscreen"
+    "offscreen",
+    "alarms"
   ],
   "short_name": "CashSkill",
   "version": "0.0.1.4",

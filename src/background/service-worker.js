@@ -14,7 +14,13 @@
 
 'use strict';
 
+// License client (per-member keys). Loaded first so revalidation helpers exist.
+try {
+  importScripts('../license/config.js', '../license/license.js');
+} catch (e) { /* license module missing — panel will show the lock screen */ }
+
 const CONTENT_FILES = [
+  'src/content/00-license.js',
   'src/content/00-util.js',
   'src/content/01-storage.js',
   'src/content/02-styles.js',
@@ -50,7 +56,35 @@ chrome.runtime.onInstalled.addListener(function () {
   try {
     chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(function () {});
   } catch (e) {}
+  scheduleLicenseCheck();
 });
+
+/* ---------- license revalidation (per-member keys, revocable) ---------- */
+async function revalidateLicense() {
+  try {
+    if (typeof CSBLicense === 'undefined') return;
+    await CSBLicense.revalidate();
+  } catch (e) { /* offline / unconfigured — keep last known status */ }
+}
+
+function scheduleLicenseCheck() {
+  try {
+    chrome.alarms.create('csb-license', { periodInMinutes: 360 }); // every 6h
+  } catch (e) {}
+}
+
+try {
+  chrome.alarms.onAlarm.addListener(function (a) {
+    if (a && a.name === 'csb-license') revalidateLicense();
+  });
+} catch (e) {}
+
+try {
+  chrome.runtime.onStartup.addListener(function () {
+    scheduleLicenseCheck();
+    revalidateLicense();
+  });
+} catch (e) {}
 
 async function getActiveTab() {
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });

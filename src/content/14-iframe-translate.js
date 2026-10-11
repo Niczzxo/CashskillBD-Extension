@@ -176,14 +176,14 @@
       } catch (e2) {}
     }
     try { walk(document.body); } catch (e3) {}
-    // Attributes: placeholders, alt text, titles, submit-button labels.
+    // Attributes: placeholders, alt text, titles, aria-labels, submit-button labels.
     try {
       var els = document.body.querySelectorAll(
-        'input[placeholder],textarea[placeholder],[alt],[title],' +
+        'input[placeholder],textarea[placeholder],[alt],[title],[aria-label],' +
         'input[type=submit][value],input[type=button][value],input[type=reset][value]');
       for (var i = 0; i < els.length && items.length < 1800; i++) {
         (function (el) {
-          var attrs = ['placeholder', 'alt', 'title'];
+          var attrs = ['placeholder', 'alt', 'title', 'aria-label'];
           if (el.tagName === 'INPUT' && /^(submit|button|reset)$/i.test(el.type || '')) attrs.push('value');
           attrs.forEach(function (at) {
             var v = null;
@@ -206,6 +206,20 @@
         items.push({ node: tn, text: ot });
       }
     } catch (e5) {}
+    // <optgroup> group labels inside dropdowns (parity with the main engine).
+    try {
+      var groups = document.body.querySelectorAll('optgroup[label]');
+      for (var gi = 0; gi < groups.length && items.length < 2000; gi++) {
+        var gv = groups[gi].getAttribute('label');
+        if (gv && gv.trim() && MEANINGFUL.test(gv)) items.push({ el: groups[gi], attr: 'label', text: gv });
+      }
+    } catch (e6) {}
+    // Frame's document title.
+    try {
+      if (document.title && document.title.trim() && MEANINGFUL.test(document.title) && items.length < 2000) {
+        items.push({ isTitle: true, text: document.title });
+      }
+    } catch (e7) {}
     return items;
   }
 
@@ -217,13 +231,14 @@
       if (!tr || !tr.trim()) return;
       if (!it.done) {
         try {
-          it.orig = it.node ? it.node.nodeValue : it.el.getAttribute(it.attr);
+          it.orig = it.node ? it.node.nodeValue : (it.isTitle ? document.title : it.el.getAttribute(it.attr));
         } catch (e) { it.orig = ''; }
         it.done = true;
         st.pairs.push(it);
       }
       try {
         if (it.node) it.node.nodeValue = tr;
+        else if (it.isTitle) document.title = tr;
         else if (it.el) it.el.setAttribute(it.attr, tr);
       } catch (e2) {}
     });
@@ -268,6 +283,7 @@
     st.pairs.forEach(function (it) {
       try {
         if (it.node) it.node.nodeValue = it.orig;
+        else if (it.isTitle && it.orig != null) document.title = it.orig;
         else if (it.el && it.orig != null) it.el.setAttribute(it.attr, it.orig);
       } catch (e) {}
     });
@@ -286,7 +302,7 @@
     if (nd.nodeType !== 1 || SKIP.test(nd.tagName)) return;
     // Attributes on the added element itself.
     (function (el) {
-      var attrs = ['placeholder', 'alt', 'title'];
+      var attrs = ['placeholder', 'alt', 'title', 'aria-label'];
       if (el.tagName === 'INPUT' && /^(submit|button|reset)$/i.test(el.type || '')) attrs.push('value');
       attrs.forEach(function (at) {
         var v = null;
@@ -303,11 +319,11 @@
       }
       // Attributes on descendants.
       var els = nd.querySelectorAll(
-        'input[placeholder],textarea[placeholder],[alt],[title],' +
+        'input[placeholder],textarea[placeholder],[alt],[title],[aria-label],' +
         'input[type=submit][value],input[type=button][value],input[type=reset][value]');
       for (var i = 0; i < els.length; i++) {
         (function (el) {
-          var attrs = ['placeholder', 'alt', 'title'];
+          var attrs = ['placeholder', 'alt', 'title', 'aria-label'];
           if (el.tagName === 'INPUT' && /^(submit|button|reset)$/i.test(el.type || '')) attrs.push('value');
           attrs.forEach(function (at2) {
             var v2 = null;
@@ -426,6 +442,16 @@
     getSettings().then(function (s) {
       if (s) { st.target = s.target; st.auto = s.auto; }
       if (!st.auto) return;
+      licensed().then(function (ok) {
+        if (ok) detectAndGo();
+      });
+    });
+  }
+
+  function detectAndGo() {
+    getSettings().then(function (s) {
+      if (s) { st.target = s.target; st.auto = s.auto; }
+      if (!st.auto) return;
       var sample = sampleText();
       if (sample.length < 40) {
         if (st._tries < 6) {
@@ -467,15 +493,26 @@
     });
   }
 
+  // License gate: iframe translation needs a valid member key.
+  function licensed() {
+    try {
+      if (typeof CSBLicenseGate === 'function') return CSBLicenseGate();
+    } catch (e) {}
+    return Promise.resolve(false);
+  }
+
   // Bus: answer pt.go / pt.restore (broadcast reaches every frame).
   try {
     chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
       if (!msg || msg.type !== 'CSB_BUS') return false;
       if (msg.cmd === 'pt.go') {
-        getSettings().then(function (s) {
-          if (s) st.target = s.target;
-          translateNow().then(function () {
-            try { sendResponse({ ok: true, data: { state: st.state } }); } catch (e) {}
+        licensed().then(function (ok) {
+          if (!ok) { try { sendResponse({ ok: false }); } catch (e) {} return; }
+          getSettings().then(function (s) {
+            if (s) st.target = s.target;
+            translateNow().then(function () {
+              try { sendResponse({ ok: true, data: { state: st.state } }); } catch (e) {}
+            });
           });
         });
         return true;

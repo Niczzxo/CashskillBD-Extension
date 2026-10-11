@@ -479,7 +479,7 @@
         items.push({ isTitle: true, text: document.title });
       }
       try {
-        var els = document.body.querySelectorAll('[placeholder],[alt],[title],' +
+        var els = document.body.querySelectorAll('[placeholder],[alt],[title],[aria-label],' +
           'input[type=submit][value],input[type=button][value],input[type=reset][value]');
         for (var i = 0; i < els.length && items.length < MAX_NODES + 300; i++) {
           this.collectAttrs(els[i], items);
@@ -512,19 +512,20 @@
         }
         // Attributes on descendants.
         var els = nd.querySelectorAll(
-          '[placeholder],[alt],[title],' +
+          '[placeholder],[alt],[title],[aria-label],' +
           'input[type=submit][value],input[type=button][value],input[type=reset][value]');
         for (var i = 0; i < els.length; i++) self.collectAttrs(els[i], out);
       } catch (e) {}
     },
 
-    /** Collect translatable attributes (placeholder/alt/title + visible
-     * button labels) from one element. Never touches text-input values. */
+    /** Collect translatable attributes (placeholder/alt/title/aria-label +
+     * visible button labels) from one element. Never touches text-input
+     * values. */
     collectAttrs: function (el, out) {
       try {
         if (el.closest && el.closest('[data-csb-ui],#cashskillbd-host,#cashskillbd-pt-host')) return;
         if (/^(SCRIPT|STYLE|NOSCRIPT)$/.test(el.tagName)) return;
-        var attrs = ['placeholder', 'alt', 'title'];
+        var attrs = ['placeholder', 'alt', 'title', 'aria-label'];
         if (el.tagName === 'INPUT' && /^(submit|button|reset)$/i.test(el.type || '')) {
           attrs.push('value'); // the visible label of submit/button inputs
         }
@@ -715,6 +716,10 @@
     },
 
     translatePage: async function () {
+      // License gate: page translation (auto or manual) needs a valid key.
+      try {
+        if (typeof CSBLicenseGate === 'function' && !(await CSBLicenseGate())) return;
+      } catch (e) {}
       // Watchdog: a stuck 'translating' state (e.g. a hung network request
       // from an older build) must never block translations forever.
       if (this.state === 'translating') {

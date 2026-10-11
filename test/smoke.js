@@ -394,6 +394,15 @@ t('dropdown options are translated (options bypass visibility)',
   /querySelectorAll\('option'\)/.test(src('src/content/11-page-translate.js')));
 t('optgroup labels are translated',
   /optgroup\[label\]/.test(src('src/content/11-page-translate.js')));
+t('aria-label attributes are translated (main engine)',
+  /'aria-label'/.test(src('src/content/11-page-translate.js')) &&
+  /\[aria-label\]/.test(src('src/content/11-page-translate.js')));
+t('aria-label attributes are translated (iframe engine)',
+  /'aria-label'/.test(src('src/content/14-iframe-translate.js')) &&
+  /\[aria-label\]/.test(src('src/content/14-iframe-translate.js')));
+t('iframe engine covers optgroup labels and document.title',
+  /optgroup\[label\]/.test(src('src/content/14-iframe-translate.js')) &&
+  /isTitle/.test(src('src/content/14-iframe-translate.js')));
 t('prompt bar never shows "Unknown" language',
   /may not be in/.test(src('src/content/11-page-translate.js')));
 t('batch detected language is adopted',
@@ -593,6 +602,44 @@ t('smooth scroll disabled during stitching',
   }
   CSB.translate.currentProvider = origProvider;
   CSB.translate.translateBatchMyMemory = origBackup;
+
+  // ---- license key system (per-member keys) ----
+  t('license client exposes CSBLicense API',
+    /root\.CSBLicense =/.test(src('src/license/license.js')) &&
+    /activate/.test(src('src/license/license.js')) &&
+    /revalidate/.test(src('src/license/license.js')) &&
+    /sha256Hex/.test(src('src/license/license.js')));
+  t('license key format CSB-XXXX-XXXX-XXXX-XXXX enforced',
+    /\^CSB-\[A-Z2-9\]\{4\}/.test(src('src/license/license.js')));
+  t('license stores only key hashes, never raw keys server-side',
+    /sha256Hex\(key\)/.test(src('src/license/license.js')) &&
+    /reg\.keys\[hash\]/.test(src('src/license/license.js')));
+  t('license config points at private registry repo',
+    /CashskillBD-Licenses/.test(src('src/license/config.js')) &&
+    /CSB_LICENSE_CONFIG/.test(src('src/license/config.js')));
+  t('content-script license gate defined',
+    /CSBLicenseGate/.test(src('src/content/00-license.js')) &&
+    /csb_license/.test(src('src/content/00-license.js')));
+  t('manifest has alarms permission for license revalidation',
+    manifest.permissions.includes('alarms'));
+  t('license gate injected into page + iframe bundles',
+    (() => {
+      const m = JSON.parse(src('manifest.json'));
+      return m.content_scripts.every(cs =>
+        (cs.js[0] === 'src/content/00-license.js') ||
+        (cs.js[0] === 'src/content/12a-force-copy-early.js'));
+    })());
+  t('service worker imports license + revalidates on alarm/startup',
+    /importScripts\(['"]\.\.\/license\/config\.js['"]/.test(src('src/background/service-worker.js')) &&
+    /csb-license/.test(src('src/background/service-worker.js')) &&
+    /onStartup/.test(src('src/background/service-worker.js')));
+  t('panel loads license lock UI',
+    /ui-license\.js/.test(src('src/sidepanel/panel.html')) &&
+    /license\/license\.js/.test(src('src/sidepanel/panel.html')));
+  t('page translate gated on license',
+    /CSBLicenseGate/.test(src('src/content/11-page-translate.js')));
+  t('iframe translate gated on license (auto + manual)',
+    /licensed\(\)/.test(src('src/content/14-iframe-translate.js')));
 
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
