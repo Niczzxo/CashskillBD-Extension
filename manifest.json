@@ -108,7 +108,7 @@
     "alarms"
   ],
   "short_name": "CashSkill",
-  "version": "0.0.1.4",
+  "version": "0.0.2.0",
   "web_accessible_resources": [
     {
       "matches": [
