@@ -54,10 +54,10 @@
     });
   }
 
-  function setFlag(latest) {
+  function setFlag(latest, url) {
     try {
       var o = {};
-      o[STORE_KEY] = { latest: latest, checkedAt: Date.now() };
+      o[STORE_KEY] = { latest: latest, url: url || '', checkedAt: Date.now() };
       chrome.storage.local.set(o, function () {});
     } catch (e) {}
   }
@@ -94,9 +94,15 @@
     build();
     var t = document.getElementById('csb-update-text');
     if (t) t.innerHTML = 'নতুন version <b>v' + esc(latest) + '</b> এসেছে<br>(তোমার version v' + esc(cur) + ')।';
+    // The cached-flag path may not have a URL — always construct the direct
+    // asset URL so the download button never dead-ends on a mandatory gate.
+    if (!url && latest) {
+      url = 'https://github.com/' + repo() + '/releases/download/v' + latest + '/cashskillbd-v' + latest + '.zip';
+    }
     var a = document.getElementById('csb-update-link');
     if (a) {
-      // Direct download — never navigates to GitHub.
+      // Direct download — never navigates to GitHub. No dismiss: the gate
+      // stays until the user actually updates (version check on next open).
       a.onclick = function (ev) {
         if (ev) ev.preventDefault();
         directDownload(url);
@@ -122,6 +128,20 @@
     if (overlay) overlay.style.display = 'none';
   }
 
+  /** Boolean outdated check without UI side effects — for programmatic
+   * callers (e.g. shortcut auto-start) that must not run on stale builds. */
+  async function isOutdated() {
+    var cur = curVersion();
+    if (!cur) return false;
+    try {
+      var flag = await getFlag();
+      if (flag && flag.latest && (Date.now() - (flag.checkedAt || 0)) < ENFORCE_TTL) {
+        return cmp(flag.latest, cur) > 0;
+      }
+    } catch (e) {}
+    return false;
+  }
+
   /** Check for updates and enforce the gate. Never locks on failure. */
   async function check() {
     var cur = curVersion();
@@ -131,7 +151,7 @@
     try {
       var flag = await getFlag();
       if (flag && flag.latest && (now - (flag.checkedAt || 0)) < ENFORCE_TTL) {
-        if (cmp(flag.latest, cur) > 0) { show(flag.latest, cur); return; }
+        if (cmp(flag.latest, cur) > 0) { show(flag.latest, cur, flag.url); return; }
         if ((now - (flag.checkedAt || 0)) < CHECK_TTL) { hide(); return; }
       }
     } catch (e) {}
@@ -142,8 +162,9 @@
       var latest = rel && rel.version;
       if (!latest) { hide(); return; }
       if (cmp(latest, cur) > 0) {
-        setFlag(latest);
-        show(latest, cur, rel.downloadUrl || rel.url);
+        var dlUrl = rel.downloadUrl || rel.url;
+        setFlag(latest, dlUrl);
+        show(latest, cur, dlUrl);
       } else {
         clearFlag();
         hide();
@@ -155,7 +176,8 @@
     check: check,
     show: show,
     hide: hide,
-    compare: cmp
+    compare: cmp,
+    isOutdated: isOutdated
   };
 
   // Safety net: panel.js also triggers via settingsUI.autoCheck (2s after

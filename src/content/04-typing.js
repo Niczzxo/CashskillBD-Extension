@@ -365,7 +365,12 @@
       if (target.isContentEditable) {
         this.insertEditable(target, '\n');
       } else if (tag === 'TEXTAREA') {
-        setNativeValue(target, (target.value || '') + '\n');
+        // Insert at caret (not at end) so mid-text newlines land correctly.
+        var tv = target.value || '';
+        var ts = target.selectionStart, te = target.selectionEnd;
+        if (ts == null) { ts = te = tv.length; }
+        setNativeValue(target, tv.slice(0, ts) + '\n' + tv.slice(te));
+        try { target.setSelectionRange(ts + 1, ts + 1); } catch (x) {}
         target.dispatchEvent(new InputEvent('input', {
           bubbles: true, cancelable: true, inputType: 'insertParagraph', data: '\n'
         }));
@@ -448,8 +453,14 @@
           }));
         }
       } else {
+        // Delete at caret (not just the last char) so mid-run caret moves
+        // don't corrupt the "final text is EXACT" guarantee.
         var cur = target.value || '';
-        setNativeValue(target, cur.slice(0, -1));
+        var cs = target.selectionStart, ce = target.selectionEnd;
+        if (cs == null) { cs = ce = cur.length; }
+        if (cs === ce && cs > 0) cs--;
+        setNativeValue(target, cur.slice(0, cs) + cur.slice(ce));
+        try { target.setSelectionRange(cs, cs); } catch (x) {}
         target.dispatchEvent(new InputEvent('input', {
           bubbles: true, cancelable: true, inputType: 'deleteContentBackward', data: null
         }));
@@ -483,8 +494,21 @@
         U.notify('CashSkillBD', 'Typing completed.');
       }
       this.render();
-      var self = this;
-      setTimeout(function () { if (CSB.controller) CSB.controller.hide(); }, 2500);
+      var self = this, myRun = this.runId;
+      setTimeout(function () { if (myRun === self.runId && CSB.controller) CSB.controller.hide(); }, 2500);
+    },
+
+    /** Clean failure: stop the loop, unblock Enter, hide the controller,
+     * and show the reason (used when the target is detached mid-run). */
+    fail: function (msg) {
+      this.disarmFocusWait();
+      removeSendBlocker();
+      this.runId++; // invalidate the loop
+      if (this.timer) { clearTimeout(this.timer); this.timer = null; }
+      this.state = 'STOPPED';
+      this.setStatus('err', msg || 'Typing stopped.');
+      if (CSB.controller) CSB.controller.hide();
+      this.render();
     },
 
     currentWord: function () {

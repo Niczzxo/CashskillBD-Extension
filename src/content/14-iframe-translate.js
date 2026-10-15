@@ -112,9 +112,16 @@
       var parts = String(full).split('\n');
       var detected = data[2] ? String(data[2]).toLowerCase().split(/[-_]/)[0] : null;
       if (parts.length !== texts.length) {
-        // Fall back to one request per text.
+        // Fall back to one request per text — NON-recursive: a single text
+        // whose translation still mismatches line count uses the raw result
+        // instead of recursing forever.
         return Promise.all(texts.map(function (t) {
-          return gTranslate([t], target).then(function (r) { return r.parts[0] || ''; });
+          return fetchJson('https://translate.googleapis.com/translate_a/single?client=gtx' +
+            '&sl=auto&tl=' + encodeURIComponent(target) +
+            '&dt=t&q=' + encodeURIComponent(t)).then(function (d2) {
+              if (!Array.isArray(d2) || !Array.isArray(d2[0])) return '';
+              return d2[0].map(function (seg) { return seg[0] || ''; }).join('');
+            }).catch(function () { return ''; });
         })).then(function (ps) { return { parts: ps, detected: detected }; });
       }
       return { parts: parts, detected: detected };
@@ -123,7 +130,7 @@
 
   function sampleText() {
     try {
-      return (document.body.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 1500);
+      return (document.body.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 1500);
     } catch (e) { return ''; }
   }
 
@@ -246,7 +253,11 @@
 
   function translateNow() {
     if (st.state === 'translating') return Promise.resolve();
+    // Already translated: re-running would translate translated text and
+    // accumulate stale pairs — bail out (matches 11-page-translate).
+    if (st.state === 'translated') return Promise.resolve();
     st.state = 'translating';
+    st.pairs = [];
     var items = collect().filter(function (it) {
       var c = clean(it.text);
       if (!c || !MEANINGFUL.test(c)) return false;

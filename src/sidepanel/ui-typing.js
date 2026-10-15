@@ -166,6 +166,8 @@
     },
 
     start: async function () {
+      // Boot race guard: shortcut auto-start can fire before build().
+      if (!this.el || !this.el.textarea) return;
       var text = (this.el.textarea.value || '');
       if (!text.trim()) { this.setStatus('err', 'Please enter some text first.'); return; }
       // Re-entrancy guard: ignore double-clicks while a start is in flight.
@@ -190,9 +192,24 @@
 
     stop: function () {
       var self = this;
-      CSB.bus.cmd('typing.stop').catch(function (e) {
-        self.setStatus('err', (e && e.message) || 'Could not stop typing.');
-      });
+      function viaBus() {
+        CSB.bus.cmd('typing.stop').catch(function (e) {
+          self.setStatus('err', (e && e.message) || 'Could not stop typing.');
+        });
+      }
+      // Stop on the tab where typing actually runs (recorded at start),
+      // not just the active tab — the user may have switched tabs.
+      try {
+        chrome.storage.session.get('csb_typing_tab', function (r) {
+          var tid = r && r.csb_typing_tab;
+          if (tid == null) { viaBus(); return; }
+          try {
+            chrome.tabs.sendMessage(tid, { type: 'CSB_BUS', cmd: 'typing.stop', args: {} }, function () {
+              if (chrome.runtime.lastError) viaBus();
+            });
+          } catch (e) { viaBus(); }
+        });
+      } catch (e) { viaBus(); }
     },
 
     onEvent: function (evt, d) {

@@ -176,7 +176,7 @@ t('overlay/modal accept pointer events (no click-through)',
 
 console.log('sidepanel architecture:');
 const manifest = JSON.parse(src('manifest.json'));
-t('manifest version 0.0.2.2', manifest.version === '0.0.2.2');
+t('manifest version 0.0.2.3', manifest.version === '0.0.2.3');
 t('debugger permission for pixel-perfect screenshots', manifest.permissions.includes('debugger'));
 t('sidePanel permission', manifest.permissions.includes('sidePanel'));
 t('side_panel default_path', manifest.side_panel && manifest.side_panel.default_path === 'src/sidepanel/panel.html');
@@ -632,6 +632,10 @@ t('smooth scroll disabled during stitching',
     /releases\/download\//.test(src('src/content/09-settings.js')));
   t('manifest has downloads permission',
     /"downloads"/.test(src('manifest.json')));
+  t('shortcut auto-start gated on update + license (no bypass)',
+    /isOutdated/.test(src('src/sidepanel/ui-update.js')) &&
+    /CSB\.updateGate\.isOutdated/.test(src('src/sidepanel/panel.js')) &&
+    /CSBLicense\.licensed/.test(src('src/sidepanel/panel.js')));
   t('license fetches bypass cache (no stale revoke)',
     /cache: 'no-store'/.test(src('src/license/license.js')));
   t('license key format CSB-XXXX-XXXX-XXXX-XXXX enforced',

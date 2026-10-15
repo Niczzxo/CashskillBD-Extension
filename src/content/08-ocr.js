@@ -275,7 +275,15 @@
         // Send the captured image to the panel for OCR.
         // (Panel runs in extension context with our CSP, avoiding page CSP issues.)
         var imageDataUrl = work.toDataURL('image/png');
-        if (CSB.bridge) { try { CSB.bridge.emit('ocr.image', { image: imageDataUrl }); } catch (e) {} }
+        if (CSB.bridge) {
+          try { CSB.bridge.emit('ocr.image', { image: imageDataUrl }); } catch (e) {}
+        } else {
+          // No bridge: the image would be silently dropped — tell the user.
+          this.state = 'ERROR';
+          this.setStatus('err', 'Could not reach the panel. Reopen the panel and try again.');
+          this.render();
+          return;
+        }
         // Reset to READY so a new selection can start immediately.
         // The panel handles OCR and shows the result.
         this.state = 'READY';

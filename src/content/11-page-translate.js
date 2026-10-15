@@ -263,7 +263,7 @@
 
     sampleText: function () {
       try {
-        return (document.body.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 1500);
+        return (document.body.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 1500);
       } catch (e) { return ''; }
     },
 
@@ -734,6 +734,13 @@
         }
       }
       var target = this.targetLang();
+      // Already translated to this target: re-running would translate the
+      // translated text (corruption) and drop stored originals via
+      // _resetTrack — bail out instead.
+      if (this.state === 'translated' && this._translatedTo === target) {
+        this.toast('Page is already translated to ' + CSB.translate.langName(target));
+        return;
+      }
       // If we never detected (manual trigger), detect first so we can
       // bail out early when the page is already in the target language.
       if (!this.detectedLang) {
@@ -826,6 +833,7 @@
           : 'Translation failed — check your connection and try again');
       } else {
         this.state = 'translated';
+        this._translatedTo = target;
         this.emitState();
         this.startObserver();
         this.renderBar('done');

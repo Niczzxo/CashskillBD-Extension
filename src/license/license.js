@@ -59,7 +59,11 @@
   async function fetchOne(url, headers, isRaw) {
     // no-store: GitHub sends max-age=60; a cached registry would let a
     // revoked key keep working for a minute after revocation.
-    var res = await fetch(url, { cache: 'no-store', headers: isRaw ? {} : headers });
+    // 15s timeout: a stalled network must not hang activation forever.
+    var res = await Promise.race([
+      fetch(url, { cache: 'no-store', headers: isRaw ? {} : headers }),
+      new Promise(function (_, rej) { setTimeout(function () { rej(new Error('license-timeout')); }, 15000); })
+    ]);
     if (!res.ok) throw new Error('license-http-' + res.status);
     var text = await res.text();
     var reg;

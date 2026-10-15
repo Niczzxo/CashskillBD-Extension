@@ -34,12 +34,22 @@
 
     captureVisible: function () {
       return new Promise(function (resolve, reject) {
+        var done = false;
+        // 30s timeout: if the SW dies mid-request the promise must settle
+        // instead of hanging capture() forever with the page hidden.
+        var to = setTimeout(function () {
+          if (!done) { done = true; reject(new Error('Capture timed out. Please try again.')); }
+        }, 30000);
         try {
           chrome.runtime.sendMessage({ type: 'CSB_CAPTURE_VISIBLE' }, function (res) {
+            if (done) return;
+            done = true;
+            clearTimeout(to);
+            if (chrome.runtime.lastError) { reject(new Error('Unable to capture this page. Please try again.')); return; }
             if (res && res.ok) resolve(res.dataUrl);
             else reject(new Error((res && res.error) || 'Unable to capture this page. Please try again.'));
           });
-        } catch (e) { reject(e); }
+        } catch (e) { if (!done) { done = true; clearTimeout(to); reject(e); } }
       });
     },
 
@@ -342,6 +352,15 @@
         var canvas = document.createElement('canvas');
         canvas.width = Math.round(fullW * scale);
         canvas.height = Math.round(fullH * scale);
+        // Chrome caps canvas at ~32767px per side — clamp scale so huge
+        // pages don't produce a blank canvas with a false "ready".
+        var MAXP = 16000;
+        if (canvas.width > MAXP || canvas.height > MAXP) {
+          var k = Math.min(MAXP / canvas.width, MAXP / canvas.height);
+          canvas.width = Math.round(canvas.width * k);
+          canvas.height = Math.round(canvas.height * k);
+          scale = scale * k;
+        }
         var ctx2d = canvas.getContext('2d');
         ctx2d.fillStyle = '#ffffff';
         ctx2d.fillRect(0, 0, canvas.width, canvas.height);
@@ -533,7 +552,7 @@
       function cleanup() {
         self._selecting = false;
         try { hint.remove(); overlay.remove(); } catch (e) {}
-        window.removeEventListener('pointermove', onMove, true);
+        window.removeEventListener('pointermove', onMoveWrap, true);
         window.removeEventListener('pointerup', onUp, true);
         window.removeEventListener('keydown', onKey, true);
         window.removeEventListener('wheel', onWheel);
@@ -602,10 +621,12 @@
         syDoc = e.clientY + window.scrollY;
         try { e.preventDefault(); } catch (e2) {}
       });
-      window.addEventListener('pointermove', function (e) {
+      // Named wrapper so cleanup() can remove the exact reference.
+      function onMoveWrap(e) {
         lastCX = e.clientX; lastCY = e.clientY;
         onMove(e);
-      }, true);
+      }
+      window.addEventListener('pointermove', onMoveWrap, true);
       window.addEventListener('pointerup', onUp, true);
       window.addEventListener('keydown', onKey, true);
       // Wheel listener (non-passive so we can preventDefault and control scroll)

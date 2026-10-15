@@ -487,6 +487,7 @@
       try {
         var api = await self.fetchJsonSmart('https://api.github.com/repos/' + repo + '/releases/latest');
         var tag = String(api.tag_name || '').trim();
+        if (!tag) throw new Error('empty tag'); // fall through to redirect strategy
         return {
           version: tag.replace(/^[vV]/, ''),
           url: (api.assets && api.assets[0] && api.assets[0].browser_download_url) || api.html_url,
@@ -511,9 +512,18 @@
      * itself triggers a download, not a page). */
     downloadUpdate: function (url) {
       if (!url) return false;
+      var self = this;
       try {
         if (chrome.downloads && chrome.downloads.download) {
-          chrome.downloads.download({ url: url, saveAs: false }, function () {});
+          chrome.downloads.download({ url: url, saveAs: false }, function () {
+            try {
+              if (chrome.runtime.lastError) {
+                self.modal('Download failed',
+                  '<p>Download শুরু করা যায়নি। নিচের link থেকে manually download করুন:</p>' +
+                  '<p><a href="' + U.esc(url) + '" target="_blank" rel="noopener">' + U.esc(url) + '</a></p>');
+              }
+            } catch (e) {}
+          });
           return true;
         }
       } catch (e) {}
@@ -521,10 +531,16 @@
       return false;
     },
 
-    /** GET JSON directly, else via the SW proxy. */
+    /** GET JSON directly, else via the SW proxy. 15s timeout so a stalled
+     * network can't hang the "Checking…" modal forever. */
     fetchJsonSmart: async function (url) {
+      function withTimeout(p, ms) {
+        return Promise.race([p, new Promise(function (_, rej) {
+          setTimeout(function () { rej(new Error('timeout')); }, ms);
+        })]);
+      }
       try {
-        var res = await fetch(url);
+        var res = await withTimeout(fetch(url), 15000);
         if (!res.ok) throw new Error('HTTP ' + res.status);
         return await res.json();
       } catch (e) {
@@ -541,7 +557,9 @@
     /** Follow a redirecting URL (direct, else SW proxy) and return the final URL. */
     followRedirectSmart: async function (url) {
       try {
-        var res = await fetch(url, { redirect: 'follow' });
+        var res = await Promise.race([fetch(url, { redirect: 'follow' }), new Promise(function (_, rej) {
+          setTimeout(function () { rej(new Error('timeout')); }, 15000);
+        })]);
         if (res.url) return res.url;
       } catch (e) {}
       var sw = await new Promise(function (resolve) {

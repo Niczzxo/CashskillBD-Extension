@@ -300,6 +300,17 @@
       if (cmd) await chrome.storage.session.remove('csb_pending_cmd');
     } catch (e) {}
     if (!cmd || cmd === 'open-panel') return;
+    // Forced update gate: never auto-run tools on an outdated build.
+    // (The overlay already blocks the panel UI; this closes the shortcut path.)
+    try {
+      if (window.CSB && CSB.updateGate && CSB.updateGate.isOutdated &&
+          await CSB.updateGate.isOutdated()) return;
+    } catch (e) {}
+    // License gate: never auto-run tools when unlicensed/locked.
+    try {
+      if (typeof CSBLicense !== 'undefined' && CSBLicense.licensed &&
+          !(await CSBLicense.licensed())) return;
+    } catch (e2) {}
     if (cmd === 'start-typing') {
       switchTab('typing', true);
       setTimeout(function () { if (CSB.typingPanelUI) CSB.typingPanelUI.start(); }, 350);

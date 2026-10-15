@@ -21,6 +21,11 @@
 'use strict';
 
 (function () {
+  /* Idempotency guard: re-injection must not stack duplicate blockers
+   * (disable() can only remove the latest set). */
+  if (window.__CSB_FC_LOADED) return;
+  window.__CSB_FC_LOADED = true;
+
   var STYLE_ID = 'cashskillbd-force-copy';
   var EVENTS = ['beforecopy', 'copy', 'cut', 'contextmenu', 'selectstart', 'dragstart'];
 

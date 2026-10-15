@@ -93,6 +93,9 @@
 
     capture: function () {
       var self = this;
+      // Re-entrancy guard: ignore while a capture is already running
+      // (prevents shortcut racing a manual click from colliding sessions).
+      if (this.busy) return;
       this.busy = true;
       this.render();
       // Watchdog: if the tab never answers (crash / tab switch with no
