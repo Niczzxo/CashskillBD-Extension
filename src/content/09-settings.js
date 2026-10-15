@@ -343,6 +343,21 @@
       var dev = U.el('div', 'csb-about-dev', 'Developed by <span>RIYAZUL ISLAM</span>');
       wrap.appendChild(logo); wrap.appendChild(name); wrap.appendChild(tag); wrap.appendChild(ver); wrap.appendChild(dev);
       page.appendChild(wrap);
+      // Device ID (license one-key-one-device binding): member copies this and sends it to the admin.
+      try {
+        if (typeof CSBLicense !== 'undefined' && CSBLicense.deviceId) {
+          CSBLicense.deviceId().then(function (id) {
+            if (!id) return;
+            page.appendChild(actionRow('Device ID', id.slice(0, 13) + '… — binding-এর জন্য admin-কে পুরো ID পাঠান।', 'COPY', function () {
+              try {
+                CSBLicense.deviceId().then(function (full) {
+                  if (full && navigator.clipboard) navigator.clipboard.writeText(full);
+                });
+              } catch (e) {}
+            }));
+          }).catch(function () {});
+        }
+      } catch (e) {}
       page.appendChild(actionRow('Check for updates', 'Compare with the latest GitHub release.', 'CHECK', function () {
         CSB.settingsUI.checkForUpdates();
       }));

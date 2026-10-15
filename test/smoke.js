@@ -608,7 +608,18 @@ t('smooth scroll disabled during stitching',
     /root\.CSBLicense =/.test(src('src/license/license.js')) &&
     /activate/.test(src('src/license/license.js')) &&
     /revalidate/.test(src('src/license/license.js')) &&
-    /sha256Hex/.test(src('src/license/license.js')));
+    /sha256Hex/.test(src('src/license/license.js')) &&
+    /deviceId/.test(src('src/license/license.js')));
+  t('one-key-one-device binding enforced on activate + revalidate',
+    /entry\.device/.test(src('src/license/license.js')) &&
+    /reason: 'device'/.test(src('src/license/license.js')) &&
+    /deviceMismatch/.test(src('src/license/license.js')) &&
+    /csb_device_id/.test(src('src/license/license.js')));
+  t('device-bound message in lock UI',
+    /device:/.test(src('src/sidepanel/ui-license.js')) &&
+    /অন্য device/.test(src('src/sidepanel/ui-license.js')));
+  t('About page shows Device ID for admin binding',
+    /Device ID/.test(src('src/content/09-settings.js')));
   t('license key format CSB-XXXX-XXXX-XXXX-XXXX enforced',
     /\^CSB-\[A-Z2-9\]\{4\}/.test(src('src/license/license.js')));
   t('license stores only key hashes, never raw keys server-side',

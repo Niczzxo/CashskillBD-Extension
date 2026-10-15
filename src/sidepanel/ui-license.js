@@ -13,6 +13,7 @@
     format: 'Key format ভুল। CSB-XXXX-XXXX-XXXX-XXXX আকারে দিন।',
     unknown: 'এই key-টি পাওয়া যায়নি। key ঠিক আছে কিনা দেখুন।',
     revoked: 'এই key-টি বাতিল করা হয়েছে। নতুন key-এর জন্য admin-এর সাথে যোগাযোগ করুন।',
+    device: 'এই key অন্য device-এ bind করা আছে। নিজের key পেতে admin-এর সাথে যোগাযোগ করুন।',
     network: 'Server-এ পৌঁছানো যাচ্ছে না। Internet check করে আবার চেষ্টা করুন।',
     crypto: 'এই browser-এ key যাচাই করা যাচ্ছে না। Chrome update করে আবার চেষ্টা করুন।'
   };
