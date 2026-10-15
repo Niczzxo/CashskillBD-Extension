@@ -76,14 +76,14 @@
     overlay.innerHTML =
       '<div style="width:100%;max-width:340px;text-align:center;">' +
       '<div style="font-size:44px;margin-bottom:12px;">🔄</div>' +
-      '<div style="font-size:18px;font-weight:700;color:#fff;margin-bottom:6px;font-family:inherit;">Update আবশ্যক</div>' +
+      '<div style="font-size:18px;font-weight:700;color:#fff;margin-bottom:6px;font-family:inherit;">Update Required</div>' +
       '<div id="csb-update-text" style="font-size:13px;color:#fff;opacity:.7;margin-bottom:18px;line-height:1.7;font-family:inherit;"></div>' +
       '<button id="csb-update-link" type="button" ' +
       'style="display:block;width:100%;box-sizing:border-box;padding:12px;border:none;cursor:pointer;border-radius:10px;font-size:15px;font-weight:700;' +
       'background:linear-gradient(135deg,#e11d48,#f59e0b);color:#fff;font-family:inherit;">⬇ Download update</button>' +
       '<div style="font-size:12px;margin-top:12px;opacity:.5;color:#fff;line-height:1.7;font-family:inherit;">' +
-      'Zip সরাসরি download হবে — GitHub page খুলবে না।<br>Extract করে chrome://extensions-এ Reload চাপ দাও।<br>' +
-      'Update না করা পর্যন্ত extension ব্যবহার করা যাবে না।<br>Developed by RIYAZUL ISLAM</div>' +
+      'Extract the zip, then press Reload at chrome://extensions.<br>' +
+      'The extension cannot be used until it is updated.<br>Developed by RIYAZUL ISLAM</div>' +
       '</div>';
     // No dismiss — this gate is mandatory. Clicks outside do nothing.
     overlay.addEventListener('click', function (ev) { ev.stopPropagation(); }, true);
@@ -93,7 +93,7 @@
   function show(latest, cur, url) {
     build();
     var t = document.getElementById('csb-update-text');
-    if (t) t.innerHTML = 'নতুন version <b>v' + esc(latest) + '</b> এসেছে<br>(তোমার version v' + esc(cur) + ')।';
+    if (t) t.innerHTML = 'New version <b>v' + esc(latest) + '</b> is available<br>(your version v' + esc(cur) + ').';
     // The cached-flag path may not have a URL — always construct the direct
     // asset URL so the download button never dead-ends on a mandatory gate.
     if (!url && latest) {

@@ -176,7 +176,7 @@ t('overlay/modal accept pointer events (no click-through)',
 
 console.log('sidepanel architecture:');
 const manifest = JSON.parse(src('manifest.json'));
-t('manifest version 0.0.2.3', manifest.version === '0.0.2.3');
+t('manifest version 0.0.2.4', manifest.version === '0.0.2.4');
 t('debugger permission for pixel-perfect screenshots', manifest.permissions.includes('debugger'));
 t('sidePanel permission', manifest.permissions.includes('sidePanel'));
 t('side_panel default_path', manifest.side_panel && manifest.side_panel.default_path === 'src/sidepanel/panel.html');
@@ -675,7 +675,7 @@ t('smooth scroll disabled during stitching',
   t('forced update gate: panel overlay module',
     /updateGate/.test(src('src/sidepanel/ui-update.js')) &&
     /check/.test(src('src/sidepanel/ui-update.js')) &&
-    /Update আবশ্যক/.test(src('src/sidepanel/ui-update.js')));
+    /Update Required/.test(src('src/sidepanel/ui-update.js')));
   t('autoCheck delegates to forced update gate',
     /CSB\.updateGate/.test(src('src/content/09-settings.js')));
   t('panel loads update gate UI',

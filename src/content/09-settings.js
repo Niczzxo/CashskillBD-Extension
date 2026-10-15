@@ -519,7 +519,7 @@
             try {
               if (chrome.runtime.lastError) {
                 self.modal('Download failed',
-                  '<p>Download শুরু করা যায়নি। নিচের link থেকে manually download করুন:</p>' +
+                  '<p>Could not start the download. Download it manually from the link below:</p>' +
                   '<p><a href="' + U.esc(url) + '" target="_blank" rel="noopener">' + U.esc(url) + '</a></p>');
               }
             } catch (e) {}
@@ -598,7 +598,7 @@
         this.modal('Update available',
           '<p>A newer version of CashSkillBD is available: <b>v' + U.esc(latest) + '</b> (you have v' + U.esc(cur) + ').</p>' +
           '<p><button type="button" id="csb-dl-update2" class="csb-btn csb-btn-primary">⬇ Download update</button></p>' +
-          '<p class="csb-hint">Zip সরাসরি download হবে। Extract করে chrome://extensions-এ Reload চাপ দিন।</p>',
+          '<p class="csb-hint">The zip downloads directly. Extract it, then press Reload at chrome://extensions.</p>',
           function () { CSB.settings.set('updates.dismissed', latest); });
         try {
           var dlBtn2 = CSB.panel.root.querySelector('#csb-dl-update2');
@@ -631,7 +631,7 @@
             '<p>A newer version is available: <b>v' + U.esc(latest) + '</b> (you have v' + U.esc(cur) + ').</p>' +
             (rel.name ? '<p>' + U.esc(String(rel.name)).slice(0, 200) + '</p>' : '') +
             '<p><button type="button" id="csb-dl-update" class="csb-btn csb-btn-primary">⬇ Download update</button></p>' +
-            '<p class="csb-hint">Zip সরাসরি download হবে — GitHub page খুলবে না। Extract করে chrome://extensions-এ Reload চাপ দিন।</p>',
+            '<p class="csb-hint">The zip downloads directly. Extract it, then press Reload at chrome://extensions.</p>',
             function () { CSB.settings.set('updates.dismissed', latest); });
           try {
             var dlBtn = CSB.panel.root.querySelector('#csb-dl-update');

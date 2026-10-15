@@ -10,17 +10,17 @@
   'use strict';
 
   var MESSAGES = {
-    format: 'Key format ভুল। CSB-XXXX-XXXX-XXXX-XXXX আকারে দিন।',
-    unknown: 'এই key-টি পাওয়া যায়নি। key ঠিক আছে কিনা দেখুন।',
-    revoked: 'এই key-টি বাতিল করা হয়েছে। নতুন key-এর জন্য admin-এর সাথে যোগাযোগ করুন।',
-    network: 'Server-এ পৌঁছানো যাচ্ছে না। Internet check করে আবার চেষ্টা করুন।',
-    crypto: 'এই browser-এ key যাচাই করা যাচ্ছে না। Chrome update করে আবার চেষ্টা করুন।'
+    format: 'Invalid key format. Enter it as CSB-XXXX-XXXX-XXXX-XXXX.',
+    unknown: 'This key was not found. Please check the key and try again.',
+    revoked: 'This key has been revoked. Contact your admin for a new key.',
+    network: 'Cannot reach the server. Check your internet connection and try again.',
+    crypto: 'This browser cannot verify keys. Update Chrome and try again.'
   };
 
   function networkMessage(detail) {
-    if (detail === '403') return 'GitHub rate limit-এ আটকেছে। ২-৩ মিনিট পরে আবার চেষ্টা করুন।';
-    if (detail === '404') return 'License registry পাওয়া যাচ্ছে না (404)। Admin-কে জানান।';
-    if (detail) return 'Server error (HTTP ' + detail + ')। আবার চেষ্টা করুন।';
+    if (detail === '403') return 'GitHub rate limit reached. Try again in 2-3 minutes.';
+    if (detail === '404') return 'License registry not found (404). Please inform the admin.';
+    if (detail) return 'Server error (HTTP ' + detail + '). Try again.';
     return MESSAGES.network;
   }
 
@@ -46,10 +46,10 @@
     box.appendChild(el('div', 'font-size:44px;margin-bottom:12px;', '🔑'));
     box.appendChild(el('div',
       'font-size:18px;font-weight:700;color:#fff;margin-bottom:6px;font-family:inherit;',
-      'License key প্রয়োজন'));
+      'License Key Required'));
     box.appendChild(el('div',
       'font-size:13px;color:#fff;opacity:.65;margin-bottom:18px;font-family:inherit;',
-      'CashSkillBD ব্যবহার করতে আপনার member key দিন।'));
+      'Enter your member key to use CashSkillBD.'));
 
     inputEl = el('input',
       'width:100%;box-sizing:border-box;padding:12px;border-radius:10px;border:1px solid #e11d48;' +
@@ -84,7 +84,7 @@
 
     box.appendChild(el('div',
       'font-size:12px;margin-top:8px;opacity:.5;color:#fff;font-family:inherit;',
-      'Key-এর জন্য আপনার admin-এর সাথে যোগাযোগ করুন।<br>Developed by RIYAZUL ISLAM'));
+      'Contact your admin to get a key.<br>Developed by RIYAZUL ISLAM'));
 
     overlay.appendChild(box);
     document.body.appendChild(overlay);
@@ -111,7 +111,7 @@
   async function doActivate() {
     if (!inputEl) return;
     var btn = document.getElementById('csb-license-go');
-    say('যাচাই করা হচ্ছে…', true);
+    say('Verifying…', true);
     if (btn) btn.disabled = true;
     try {
       var r = await CSBLicense.activate(inputEl.value);
@@ -121,7 +121,7 @@
       } else if (r.reason === 'network') {
         say(networkMessage(r.detail), false);
       } else {
-        say(MESSAGES[r.reason] || 'Key যাচাই ব্যর্থ হয়েছে।', false);
+        say(MESSAGES[r.reason] || 'Key verification failed.', false);
       }
     } catch (e) {
       say(MESSAGES.network, false);
