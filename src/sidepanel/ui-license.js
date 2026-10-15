@@ -17,6 +17,13 @@
     crypto: 'এই browser-এ key যাচাই করা যাচ্ছে না। Chrome update করে আবার চেষ্টা করুন।'
   };
 
+  function networkMessage(detail) {
+    if (detail === '403') return 'GitHub rate limit-এ আটকেছে। ২-৩ মিনিট পরে আবার চেষ্টা করুন।';
+    if (detail === '404') return 'License registry পাওয়া যাচ্ছে না (404)। Admin-কে জানান।';
+    if (detail) return 'Server error (HTTP ' + detail + ')। আবার চেষ্টা করুন।';
+    return MESSAGES.network;
+  }
+
   var overlay = null;
   var inputEl = null;
   var msgEl = null;
@@ -111,6 +118,8 @@
       if (r.ok) {
         say('Activated ✓', true);
         setTimeout(hide, 600);
+      } else if (r.reason === 'network') {
+        say(networkMessage(r.detail), false);
       } else {
         say(MESSAGES[r.reason] || 'Key যাচাই ব্যর্থ হয়েছে।', false);
       }

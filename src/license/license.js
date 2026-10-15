@@ -56,23 +56,52 @@
     return !!(tok && !/REPLACE|PLACEHOLDER/.test(tok) && tok.length > 10);
   }
 
+  async function fetchOne(url, headers, isRaw) {
+    var res = await fetch(url, { headers: isRaw ? {} : headers });
+    if (!res.ok) throw new Error('license-http-' + res.status);
+    var text = await res.text();
+    var reg;
+    if (isRaw) {
+      reg = JSON.parse(text);
+    } else {
+      var data = JSON.parse(text);
+      if (!data || !data.content) throw new Error('license-bad-registry');
+      reg = JSON.parse(b64ToText(data.content));
+    }
+    if (!reg || typeof reg !== 'object' || !reg.keys || typeof reg.keys !== 'object') {
+      throw new Error('license-bad-registry');
+    }
+    return reg;
+  }
+
   async function fetchRegistry() {
     var c = cfg();
     // Public registry: no token needed. A read token is only used when one
     // is configured (private-registry setups).
     var headers = { 'Accept': 'application/vnd.github+json' };
     if (tokenOk(c.readToken)) headers['Authorization'] = 'Bearer ' + c.readToken;
-    var url = (c.apiUrl || '') + '?ref=' + encodeURIComponent(c.branch || 'main') +
-      '&t=' + Date.now(); // cache-buster: revocations take effect fast
-    var res = await fetch(url, { headers: headers });
-    if (!res.ok) throw new Error('license-fetch-' + res.status);
-    var data = await res.json();
-    if (!data || !data.content) throw new Error('license-bad-registry');
-    var reg = JSON.parse(b64ToText(data.content));
-    if (!reg || typeof reg !== 'object' || !reg.keys || typeof reg.keys !== 'object') {
-      throw new Error('license-bad-registry');
+    var branch = encodeURIComponent(c.branch || 'main');
+    var bust = Date.now();
+    var urls = [(c.apiUrl || '') + '?ref=' + branch + '&t=' + bust];
+    // Fallback: raw CDN for public registries — separate rate limits from
+    // api.github.com, so a rate-limited IP still validates.
+    try {
+      var m = /github\.com\/([^\/]+\/[^\/]+)\/contents\/(.+)$/.exec(c.apiUrl || '');
+      if (m) urls.push('https://raw.githubusercontent.com/' + m[1] + '/' + branch + '/' + m[2] + '?t=' + bust);
+    } catch (e) {}
+    var lastErr = null;
+    for (var i = 0; i < urls.length; i++) {
+      try {
+        return await fetchOne(urls[i], headers, i > 0);
+      } catch (e) { lastErr = e; }
     }
-    return reg;
+    throw lastErr || new Error('license-fetch-failed');
+  }
+
+  function netDetail(e) {
+    var msg = String((e && e.message) || e || '');
+    var m = /license-http-(\d+)/.exec(msg);
+    return m ? m[1] : '';
   }
 
   function getStored() {
@@ -111,7 +140,7 @@
     try {
       reg = await fetchRegistry();
     } catch (e) {
-      return { ok: false, reason: 'network' };
+      return { ok: false, reason: 'network', detail: netDetail(e) };
     }
     var entry = reg.keys[hash];
     if (!entry) return { ok: false, reason: 'unknown' };
@@ -128,7 +157,7 @@
     try {
       reg = await fetchRegistry();
     } catch (e) {
-      return { status: cur.status || 'unknown', offline: true };
+      return { status: cur.status || 'unknown', offline: true, detail: netDetail(e) };
     }
     var entry = reg.keys[cur.hash];
     var valid = !!(entry && !entry.revoked);
