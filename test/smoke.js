@@ -640,6 +640,9 @@ t('smooth scroll disabled during stitching',
     /CSBLicenseGate/.test(src('src/content/11-page-translate.js')));
   t('iframe translate gated on license (auto + manual)',
     /licensed\(\)/.test(src('src/content/14-iframe-translate.js')));
+  t('license fallback builds correct raw CDN URL',
+    src('src/license/license.js').indexOf('api\\.github\\.com\\/repos\\/') !== -1 &&
+    src('src/license/license.js').indexOf('raw.githubusercontent.com') !== -1);
 
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);

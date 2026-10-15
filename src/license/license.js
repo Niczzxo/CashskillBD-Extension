@@ -1,10 +1,10 @@
 /* CashSkillBD — license client (per-member keys).
  *
  * Key model: each member gets a unique key like CSB-7KQ2-9MZX-4PWR-8TND.
- * Only the SHA-256 hash of each key is stored server-side (private repo
- * Niczzxo/CashskillBD-Licenses, licenses.json). The extension hashes the
- * member's key locally and checks membership — the raw key is never sent
- * anywhere, and hashes cannot be reversed into keys.
+ * Only the SHA-256 hash of each key is stored server-side (public repo
+ * Niczzxo/CashskillBD-Licenses, licenses.json — hash-only, no secrets).
+ * The extension hashes the member's key locally and checks membership —
+ * the raw key is never sent anywhere, and hashes cannot be reversed.
  *
  * Revoking a key (admin removes it / sets revoked:true in the registry)
  * locks that member's extension on the next validation (browser start +
@@ -86,8 +86,8 @@
     // Fallback: raw CDN for public registries — separate rate limits from
     // api.github.com, so a rate-limited IP still validates.
     try {
-      var m = /github\.com\/([^\/]+\/[^\/]+)\/contents\/(.+)$/.exec(c.apiUrl || '');
-      if (m) urls.push('https://raw.githubusercontent.com/' + m[1] + '/' + branch + '/' + m[2] + '?t=' + bust);
+      var m = /api\.github\.com\/repos\/([^\/]+)\/([^\/]+)\/contents\/(.+)$/.exec(c.apiUrl || '');
+      if (m) urls.push('https://raw.githubusercontent.com/' + m[1] + '/' + m[2] + '/' + branch + '/' + m[3] + '?t=' + bust);
     } catch (e) {}
     var lastErr = null;
     for (var i = 0; i < urls.length; i++) {
