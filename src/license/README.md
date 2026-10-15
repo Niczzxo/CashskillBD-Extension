@@ -35,10 +35,13 @@
 {
   "version": 1,
   "keys": {
-    "<sha256-hex-of-key>": { "created": "2026-10-12T00:00:00.000Z", "revoked": false }
+    "<sha256-hex-of-key>": { "created": "2026-10-12T00:00:00.000Z", "revoked": false, "member": "Rahim" }
   }
 }
 ```
+
+- `member`: কোন team member-এর key (শুধু first name — registry public)। Extension এই field ignore করে, শুধু admin-এর রেফারেন্সের জন্য।
+- নিয়ম: **এক member = একটাই active key**। Admin page একই নামে দ্বিতীয় active key বানাতে দেয় না — আগে পুরনোটা Revoke করতে হয়।
 
 ## সীমা (জেনে রাখো)
 
