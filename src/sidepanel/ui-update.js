@@ -78,11 +78,11 @@
       '<div style="font-size:44px;margin-bottom:12px;">🔄</div>' +
       '<div style="font-size:18px;font-weight:700;color:#fff;margin-bottom:6px;font-family:inherit;">Update আবশ্যক</div>' +
       '<div id="csb-update-text" style="font-size:13px;color:#fff;opacity:.7;margin-bottom:18px;line-height:1.7;font-family:inherit;"></div>' +
-      '<a id="csb-update-link" href="#" target="_blank" rel="noopener" ' +
-      'style="display:block;width:100%;box-sizing:border-box;padding:12px;border-radius:10px;font-size:15px;font-weight:700;' +
-      'background:linear-gradient(135deg,#e11d48,#f59e0b);color:#fff;text-decoration:none;font-family:inherit;">Download update</a>' +
+      '<button id="csb-update-link" type="button" ' +
+      'style="display:block;width:100%;box-sizing:border-box;padding:12px;border:none;cursor:pointer;border-radius:10px;font-size:15px;font-weight:700;' +
+      'background:linear-gradient(135deg,#e11d48,#f59e0b);color:#fff;font-family:inherit;">⬇ Download update</button>' +
       '<div style="font-size:12px;margin-top:12px;opacity:.5;color:#fff;line-height:1.7;font-family:inherit;">' +
-      'Zip download করে extract করো,<br>তারপর chrome://extensions-এ Reload চাপ দাও।<br>' +
+      'Zip সরাসরি download হবে — GitHub page খুলবে না।<br>Extract করে chrome://extensions-এ Reload চাপ দাও।<br>' +
       'Update না করা পর্যন্ত extension ব্যবহার করা যাবে না।<br>Developed by RIYAZUL ISLAM</div>' +
       '</div>';
     // No dismiss — this gate is mandatory. Clicks outside do nothing.
@@ -95,8 +95,27 @@
     var t = document.getElementById('csb-update-text');
     if (t) t.innerHTML = 'নতুন version <b>v' + esc(latest) + '</b> এসেছে<br>(তোমার version v' + esc(cur) + ')।';
     var a = document.getElementById('csb-update-link');
-    if (a && url) a.href = url;
+    if (a) {
+      // Direct download — never navigates to GitHub.
+      a.onclick = function (ev) {
+        if (ev) ev.preventDefault();
+        directDownload(url);
+      };
+    }
     overlay.style.display = 'flex';
+  }
+
+  /** Direct file download via the downloads permission. Falls back to
+   * opening the asset URL itself (a download, not a page). */
+  function directDownload(url) {
+    if (!url) return;
+    try {
+      if (chrome.downloads && chrome.downloads.download) {
+        chrome.downloads.download({ url: url, saveAs: false }, function () {});
+        return;
+      }
+    } catch (e) {}
+    try { window.open(url, '_blank'); } catch (e2) {}
   }
 
   function hide() {
@@ -124,7 +143,7 @@
       if (!latest) { hide(); return; }
       if (cmp(latest, cur) > 0) {
         setFlag(latest);
-        show(latest, cur, rel.url);
+        show(latest, cur, rel.downloadUrl || rel.url);
       } else {
         clearFlag();
         hide();

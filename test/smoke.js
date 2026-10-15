@@ -622,6 +622,16 @@ t('smooth scroll disabled during stitching',
     /CSBLicense\.revalidate\(\)/.test(src('src/sidepanel/ui-license.js')));
   t('service worker revalidates every 30 min',
     /periodInMinutes: 30/.test(src('src/background/service-worker.js')));
+  t('update gate downloads the zip directly (no GitHub page)',
+    /chrome\.downloads\.download/.test(src('src/sidepanel/ui-update.js')) &&
+    !/target=.._blank/.test(src('src/sidepanel/ui-update.js')) &&
+    /downloadUrl/.test(src('src/sidepanel/ui-update.js')));
+  t('settings update check downloads directly',
+    /downloadUpdate/.test(src('src/content/09-settings.js')) &&
+    /chrome\.downloads\.download/.test(src('src/content/09-settings.js')) &&
+    /releases\/download\//.test(src('src/content/09-settings.js')));
+  t('manifest has downloads permission',
+    /"downloads"/.test(src('manifest.json')));
   t('license fetches bypass cache (no stale revoke)',
     /cache: 'no-store'/.test(src('src/license/license.js')));
   t('license key format CSB-XXXX-XXXX-XXXX-XXXX enforced',

@@ -479,12 +479,18 @@
      * Returns {version, url, name}. Throws a specific error. */
     fetchLatestRelease: async function (repo) {
       var self = this;
+      // Direct asset URL pattern for our releases (asset name = cashskillbd-<tag>.zip).
+      function assetUrl(tag) {
+        return 'https://github.com/' + repo + '/releases/download/' + tag + '/cashskillbd-' + tag + '.zip';
+      }
       // Strategy 1: API.
       try {
         var api = await self.fetchJsonSmart('https://api.github.com/repos/' + repo + '/releases/latest');
+        var tag = String(api.tag_name || '').trim();
         return {
-          version: String(api.tag_name || '').trim().replace(/^[vV]/, ''),
+          version: tag.replace(/^[vV]/, ''),
           url: (api.assets && api.assets[0] && api.assets[0].browser_download_url) || api.html_url,
+          downloadUrl: (api.assets && api.assets[0] && api.assets[0].browser_download_url) || (tag ? assetUrl(tag) : api.html_url),
           name: api.name || ''
         };
       } catch (e) { /* fall through to redirect strategy */ }
@@ -496,8 +502,23 @@
       return {
         version: tag.replace(/^[vV]/, ''),
         url: 'https://github.com/' + repo + '/releases/tag/' + tag,
+        downloadUrl: assetUrl(tag),
         name: ''
       };
+    },
+    /** Direct file download — never opens the GitHub page. Uses the
+     * downloads permission; falls back to opening the asset URL (which
+     * itself triggers a download, not a page). */
+    downloadUpdate: function (url) {
+      if (!url) return false;
+      try {
+        if (chrome.downloads && chrome.downloads.download) {
+          chrome.downloads.download({ url: url, saveAs: false }, function () {});
+          return true;
+        }
+      } catch (e) {}
+      try { window.open(url, '_blank'); } catch (e2) {}
+      return false;
     },
 
     /** GET JSON directly, else via the SW proxy. */
@@ -555,12 +576,16 @@
         var latest = rel.version;
         if (!latest || compareVersions(latest, cur) <= 0) return;
         if (CSB.settings.get('updates.dismissed', '') === latest) return;
-        var url = rel.url;
+        var dlUrl2 = rel.downloadUrl || rel.url;
         this.modal('Update available',
           '<p>A newer version of CashSkillBD is available: <b>v' + U.esc(latest) + '</b> (you have v' + U.esc(cur) + ').</p>' +
-          '<p><a href="' + U.esc(url) + '" target="_blank" rel="noopener">Download the update</a></p>' +
-          '<p class="csb-hint">Download the zip, extract it, then reload the extension at chrome://extensions.</p>',
+          '<p><button type="button" id="csb-dl-update2" class="csb-btn csb-btn-primary">⬇ Download update</button></p>' +
+          '<p class="csb-hint">Zip সরাসরি download হবে। Extract করে chrome://extensions-এ Reload চাপ দিন।</p>',
           function () { CSB.settings.set('updates.dismissed', latest); });
+        try {
+          var dlBtn2 = CSB.panel.root.querySelector('#csb-dl-update2');
+          if (dlBtn2) dlBtn2.addEventListener('click', function () { CSB.settingsUI.downloadUpdate(dlUrl2); });
+        } catch (e2) {}
       } catch (e) {}
     },
 
@@ -583,13 +608,17 @@
         var cmp = compareVersions(latest, cur);
         self.closeModals();
         if (cmp > 0) {
-          var url = rel.url;
+          var dlUrl = rel.downloadUrl || rel.url;
           self.modal('Update available',
             '<p>A newer version is available: <b>v' + U.esc(latest) + '</b> (you have v' + U.esc(cur) + ').</p>' +
             (rel.name ? '<p>' + U.esc(String(rel.name)).slice(0, 200) + '</p>' : '') +
-            '<p><a href="' + U.esc(url) + '" target="_blank" rel="noopener">Download the update</a></p>' +
-            '<p class="csb-hint">Unpacked extensions can’t update themselves: download the zip, extract it, then reload the extension at chrome://extensions.</p>',
+            '<p><button type="button" id="csb-dl-update" class="csb-btn csb-btn-primary">⬇ Download update</button></p>' +
+            '<p class="csb-hint">Zip সরাসরি download হবে — GitHub page খুলবে না। Extract করে chrome://extensions-এ Reload চাপ দিন।</p>',
             function () { CSB.settings.set('updates.dismissed', latest); });
+          try {
+            var dlBtn = CSB.panel.root.querySelector('#csb-dl-update');
+            if (dlBtn) dlBtn.addEventListener('click', function () { self.downloadUpdate(dlUrl); });
+          } catch (e2) {}
         } else {
           self.modal('Check for updates',
             '<p>You are running <b>CashSkillBD v' + U.esc(cur) + '</b> — the latest release' +
