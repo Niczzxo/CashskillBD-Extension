@@ -15,15 +15,11 @@
 
 1. GitHub → Settings → Developer settings → Personal access tokens →
    **Fine-grained tokens** → Generate new token:
-   - **Read-only token** (extension-এর জন্য): Repository access → Only select
-     repositories → `CashskillBD-Licenses` → Permissions → Contents: **Read-only**।
-     এই token `src/license/config.js`-এ `readToken` হিসেবে বসবে। এটা শুধু পড়তে
-     পারে, key বদলাতে পারে না।
-   - **Admin token** (key বানানো/revoke-এর জন্য): একই repo-তে Contents:
+   - **Admin token** (key বানানো/revoke-এর জন্য): Repository access → Only select
+     repositories → `CashskillBD-Licenses` → Permissions → Contents:
      **Read and write**। এটা শুধু License Admin page-এ ব্যবহার হবে (browser-এর
      localStorage-এ থাকে, extension-এ যায় না)।
-2. Read-only token পেলে `src/license/config.js`-এর `REPLACE_WITH_READ_ONLY_PAT`
-   জায়গায় বসিয়ে extension rebuild/release করো।
+2. Extension-এর জন্য কোনো token লাগে না — registry public, শুধু hash থাকে।
 
 ## Key দেওয়া / বাতিল করা
 

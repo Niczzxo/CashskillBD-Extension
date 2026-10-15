@@ -614,7 +614,7 @@ t('smooth scroll disabled during stitching',
   t('license stores only key hashes, never raw keys server-side',
     /sha256Hex\(key\)/.test(src('src/license/license.js')) &&
     /reg\.keys\[hash\]/.test(src('src/license/license.js')));
-  t('license config points at private registry repo',
+  t('license config points at registry repo (public, hash-only)',
     /CashskillBD-Licenses/.test(src('src/license/config.js')) &&
     /CSB_LICENSE_CONFIG/.test(src('src/license/config.js')));
   t('content-script license gate defined',

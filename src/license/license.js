@@ -58,15 +58,13 @@
 
   async function fetchRegistry() {
     var c = cfg();
-    if (!tokenOk(c.readToken)) throw new Error('license-not-configured');
+    // Public registry: no token needed. A read token is only used when one
+    // is configured (private-registry setups).
+    var headers = { 'Accept': 'application/vnd.github+json' };
+    if (tokenOk(c.readToken)) headers['Authorization'] = 'Bearer ' + c.readToken;
     var url = (c.apiUrl || '') + '?ref=' + encodeURIComponent(c.branch || 'main') +
       '&t=' + Date.now(); // cache-buster: revocations take effect fast
-    var res = await fetch(url, {
-      headers: {
-        'Accept': 'application/vnd.github+json',
-        'Authorization': 'Bearer ' + c.readToken
-      }
-    });
+    var res = await fetch(url, { headers: headers });
     if (!res.ok) throw new Error('license-fetch-' + res.status);
     var data = await res.json();
     if (!data || !data.content) throw new Error('license-bad-registry');
