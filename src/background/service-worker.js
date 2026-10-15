@@ -70,7 +70,9 @@ async function revalidateLicense() {
 
 function scheduleLicenseCheck() {
   try {
-    chrome.alarms.create('csb-license', { periodInMinutes: 360 }); // every 6h
+    // Every 30 min: revoked / device-mismatched keys lock promptly in
+    // background features too (panel itself revalidates on every open).
+    chrome.alarms.create('csb-license', { periodInMinutes: 30 });
   } catch (e) {}
 }
 

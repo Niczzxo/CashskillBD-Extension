@@ -8,7 +8,7 @@
  *
  * Revoking a key (admin removes it / sets revoked:true in the registry)
  * locks that member's extension on the next validation (browser start +
- * every 6 hours). Offline keeps the last known status — nobody gets locked
+ * every 30 minutes, plus a fresh check on every panel open). Offline keeps the last known status — nobody gets locked
  * out by a network blip.
  *
  * Usable from extension pages (panel) via <script> and from the service
@@ -57,7 +57,9 @@
   }
 
   async function fetchOne(url, headers, isRaw) {
-    var res = await fetch(url, { headers: isRaw ? {} : headers });
+    // no-store: GitHub sends max-age=60; a cached registry would let a
+    // revoked key keep working for a minute after revocation.
+    var res = await fetch(url, { cache: 'no-store', headers: isRaw ? {} : headers });
     if (!res.ok) throw new Error('license-http-' + res.status);
     var text = await res.text();
     var reg;

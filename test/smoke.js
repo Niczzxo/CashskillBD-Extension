@@ -618,8 +618,13 @@ t('smooth scroll disabled during stitching',
   t('device-bound message in lock UI',
     /device:/.test(src('src/sidepanel/ui-license.js')) &&
     /অন্য device/.test(src('src/sidepanel/ui-license.js')));
-  t('About page shows Device ID for admin binding',
-    /Device ID/.test(src('src/content/09-settings.js')));
+  t('panel revalidates license fresh on open (no stale unlock)',
+    /refreshFresh/.test(src('src/sidepanel/ui-license.js')) &&
+    /CSBLicense\.revalidate\(\)/.test(src('src/sidepanel/ui-license.js')));
+  t('service worker revalidates every 30 min',
+    /periodInMinutes: 30/.test(src('src/background/service-worker.js')));
+  t('license fetches bypass cache (no stale revoke)',
+    /cache: 'no-store'/.test(src('src/license/license.js')));
   t('license key format CSB-XXXX-XXXX-XXXX-XXXX enforced',
     /\^CSB-\[A-Z2-9\]\{4\}/.test(src('src/license/license.js')));
   t('license stores only key hashes, never raw keys server-side',

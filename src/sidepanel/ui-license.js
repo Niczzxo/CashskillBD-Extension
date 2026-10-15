@@ -135,15 +135,34 @@
     try {
       ok = await CSBLicense.licensed();
     } catch (e) {}
+    // Device-bound key opened on the wrong device: explain why it's locked.
+    try {
+      var st = await CSBLicense.getStored();
+      if (st && st.deviceMismatch) say(MESSAGES.device, false);
+    } catch (e2) {}
     if (ok) hide();
     else show();
   }
 
+  /** Fresh registry check when the panel opens: a revoked key or a
+   * device-bound key on the wrong device locks promptly instead of
+   * waiting for the service worker's periodic revalidation. Offline
+   * falls back to the stored status (never locks on network failure). */
+  async function refreshFresh() {
+    try {
+      var r = await CSBLicense.revalidate();
+      if (r && r.offline) { await refresh(); return; }
+    } catch (e) {}
+    try { await refresh(); } catch (e2) {}
+  }
+
   function init() {
     build();
-    refresh();
+    refreshFresh();
     try {
       chrome.storage.onChanged.addListener(function (changes, area) {
+        // UI-only refresh here: refreshFresh() would re-trigger
+        // revalidation in a loop via the storage write it performs.
         if (area === 'local' && changes.csb_license) refresh();
       });
     } catch (e) {}
