@@ -13,7 +13,6 @@
     format: 'Key format ভুল। CSB-XXXX-XXXX-XXXX-XXXX আকারে দিন।',
     unknown: 'এই key-টি পাওয়া যায়নি। key ঠিক আছে কিনা দেখুন।',
     revoked: 'এই key-টি বাতিল করা হয়েছে। নতুন key-এর জন্য admin-এর সাথে যোগাযোগ করুন।',
-    device: 'এই key অন্য device-এ bind করা আছে। নিজের key পেতে admin-এর সাথে যোগাযোগ করুন।',
     network: 'Server-এ পৌঁছানো যাচ্ছে না। Internet check করে আবার চেষ্টা করুন।',
     crypto: 'এই browser-এ key যাচাই করা যাচ্ছে না। Chrome update করে আবার চেষ্টা করুন।'
   };
@@ -135,19 +134,14 @@
     try {
       ok = await CSBLicense.licensed();
     } catch (e) {}
-    // Device-bound key opened on the wrong device: explain why it's locked.
-    try {
-      var st = await CSBLicense.getStored();
-      if (st && st.deviceMismatch) say(MESSAGES.device, false);
-    } catch (e2) {}
     if (ok) hide();
     else show();
   }
 
-  /** Fresh registry check when the panel opens: a revoked key or a
-   * device-bound key on the wrong device locks promptly instead of
-   * waiting for the service worker's periodic revalidation. Offline
-   * falls back to the stored status (never locks on network failure). */
+  /** Fresh registry check when the panel opens: a revoked key locks
+   * promptly instead of waiting for the service worker's periodic
+   * revalidation. Offline falls back to the stored status (never locks
+   * on network failure). */
   async function refreshFresh() {
     try {
       var r = await CSBLicense.revalidate();

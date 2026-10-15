@@ -116,37 +116,8 @@
     });
   }
 
-  var DEVICE_KEY = 'csb_device_id';
-
-  /** Stable per-browser-profile device ID (generated once, stored locally).
-   * Used for one-key-one-device binding. */
-  function getDeviceId() {
-    return new Promise(function (resolve) {
-      try {
-        var s = storage();
-        if (!s) return resolve('');
-        s.get(DEVICE_KEY, function (r) {
-          var id = r && r[DEVICE_KEY];
-          if (id) return resolve(id);
-          var nid = '';
-          try {
-            if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-              nid = crypto.randomUUID();
-            } else {
-              nid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
-                var v = Math.random() * 16 | 0;
-                return (c === 'x' ? v : (v & 0x3 | 0x8)).toString(16);
-              });
-            }
-          } catch (e) {}
-          if (!nid) return resolve('');
-          var o = {};
-          o[DEVICE_KEY] = nid;
-          try { s.set(o, function () { resolve(nid); }); } catch (e2) { resolve(nid); }
-        });
-      } catch (e) { resolve(''); }
-    });
-  }
+  /* Device binding removed (2026-10-15, user request): one key works on any
+   * device the member activates it on. Revoke remains the access control. */
 
   function setStored(obj) {
     return new Promise(function (resolve) {
@@ -179,14 +150,8 @@
     var entry = reg.keys[hash];
     if (!entry) return { ok: false, reason: 'unknown' };
     if (entry.revoked) return { ok: false, reason: 'revoked' };
-    // One key = one device: if the admin bound this key to a device ID,
-    // activation from any other device is rejected.
-    var deviceId = await getDeviceId();
-    if (entry.device && deviceId && entry.device !== deviceId) {
-      return { ok: false, reason: 'device' };
-    }
     await setStored({ hash: hash, status: 'valid', checkedAt: Date.now() });
-    return { ok: true, deviceId: deviceId, bound: !!entry.device };
+    return { ok: true };
   }
 
   /** Re-check the stored key against the registry. */
@@ -200,13 +165,10 @@
       return { status: cur.status || 'unknown', offline: true, detail: netDetail(e) };
     }
     var entry = reg.keys[cur.hash];
-    var deviceId = await getDeviceId();
-    var deviceOk = !entry || !entry.device || !deviceId || entry.device === deviceId;
-    var valid = !!(entry && !entry.revoked && deviceOk);
+    var valid = !!(entry && !entry.revoked);
     var next = { hash: cur.hash, status: valid ? 'valid' : 'revoked', checkedAt: Date.now() };
-    if (!deviceOk) next.deviceMismatch = true;
     await setStored(next);
-    return { status: next.status, deviceMismatch: !deviceOk };
+    return { status: next.status };
   }
 
   async function status() {
@@ -234,7 +196,6 @@
     status: status,
     licensed: licensed,
     deactivate: deactivate,
-    getStored: getStored,
-    deviceId: getDeviceId
+    getStored: getStored
   };
 })(typeof window !== 'undefined' ? window : globalThis);
