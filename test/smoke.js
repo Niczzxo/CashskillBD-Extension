@@ -643,6 +643,24 @@ t('smooth scroll disabled during stitching',
   t('license fallback builds correct raw CDN URL',
     src('src/license/license.js').indexOf('api\\.github\\.com\\/repos\\/') !== -1 &&
     src('src/license/license.js').indexOf('raw.githubusercontent.com') !== -1);
+  t('forced update gate: panel overlay module',
+    /updateGate/.test(src('src/sidepanel/ui-update.js')) &&
+    /check/.test(src('src/sidepanel/ui-update.js')) &&
+    /Update আবশ্যক/.test(src('src/sidepanel/ui-update.js')));
+  t('autoCheck delegates to forced update gate',
+    /CSB\.updateGate/.test(src('src/content/09-settings.js')));
+  t('panel loads update gate UI',
+    /ui-update\.js/.test(src('src/sidepanel/panel.html')));
+  t('content-script update gate defined (offline-safe)',
+    /CSBUpdateGate/.test(src('src/content/00-license.js')) &&
+    /csb_update/.test(src('src/content/00-license.js')));
+  t('service worker refreshes update flag periodically',
+    /checkForUpdateGate/.test(src('src/background/service-worker.js')) &&
+    /releases\/latest/.test(src('src/background/service-worker.js')));
+  t('page translate gated on forced update',
+    /CSBUpdateGate/.test(src('src/content/11-page-translate.js')));
+  t('iframe translate gated on forced update',
+    /updateBlocked/.test(src('src/content/14-iframe-translate.js')));
 
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);

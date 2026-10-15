@@ -57,6 +57,7 @@ chrome.runtime.onInstalled.addListener(function () {
     chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(function () {});
   } catch (e) {}
   scheduleLicenseCheck();
+  try { checkForUpdateGate(); } catch (e2) {}
 });
 
 /* ---------- license revalidation (per-member keys, revocable) ---------- */
@@ -75,7 +76,10 @@ function scheduleLicenseCheck() {
 
 try {
   chrome.alarms.onAlarm.addListener(function (a) {
-    if (a && a.name === 'csb-license') revalidateLicense();
+    if (a && a.name === 'csb-license') {
+      revalidateLicense();
+      checkForUpdateGate();
+    }
   });
 } catch (e) {}
 
@@ -83,8 +87,44 @@ try {
   chrome.runtime.onStartup.addListener(function () {
     scheduleLicenseCheck();
     revalidateLicense();
+    checkForUpdateGate();
   });
 } catch (e) {}
+
+/* ---------- forced update gate (periodic) ----------
+ * Refreshes the `csb_update` flag so content-script auto features stay
+ * gated even when the panel isn't opened. Never writes on failure. */
+function cmpVer(a, b) {
+  var pa = String(a || '').split('.').map(function (x) { return parseInt(x, 10) || 0; });
+  var pb = String(b || '').split('.').map(function (x) { return parseInt(x, 10) || 0; });
+  for (var i = 0; i < Math.max(pa.length, pb.length); i++) {
+    var d = (pa[i] || 0) - (pb[i] || 0);
+    if (d !== 0) return d > 0 ? 1 : -1;
+  }
+  return 0;
+}
+
+async function checkForUpdateGate() {
+  try {
+    var cur = '';
+    try { cur = chrome.runtime.getManifest().version; } catch (e) {}
+    if (!cur) return;
+    var res = await fetch('https://api.github.com/repos/Niczzxo/CashskillBD-Extension/releases/latest', {
+      headers: { 'Accept': 'application/vnd.github+json' }
+    });
+    if (!res.ok) return;
+    var data = await res.json();
+    var latest = String((data && data.tag_name) || '').trim().replace(/^[vV]/, '');
+    if (!latest) return;
+    try {
+      if (cmpVer(latest, cur) > 0) {
+        await chrome.storage.local.set({ csb_update: { latest: latest, checkedAt: Date.now() } });
+      } else {
+        await chrome.storage.local.remove('csb_update');
+      }
+    } catch (e2) {}
+  } catch (e3) { /* offline / API hiccup: never touch the flag */ }
+}
 
 async function getActiveTab() {
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });

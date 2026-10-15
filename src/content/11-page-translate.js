@@ -720,6 +720,10 @@
       try {
         if (typeof CSBLicenseGate === 'function' && !(await CSBLicenseGate())) return;
       } catch (e) {}
+      // Forced update gate: no work on an outdated build.
+      try {
+        if (typeof CSBUpdateGate === 'function' && await CSBUpdateGate()) return;
+      } catch (e2) {}
       // Watchdog: a stuck 'translating' state (e.g. a hung network request
       // from an older build) must never block translations forever.
       if (this.state === 'translating') {

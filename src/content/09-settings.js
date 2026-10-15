@@ -532,12 +532,18 @@
       throw new Error('redirect failed');
     },
 
-    /** Silent check when the panel opens; pops up only for a new,
-     * undismissed update. Throttled to once an hour; the timestamp is only
+    /** Silent check when the panel opens. Delegates to the forced update
+     * gate: when a newer release exists the whole panel is blocked until
+     * the user updates. Throttled to once an hour; the timestamp is only
      * saved after a SUCCESSFUL check, so a failed check (offline / API
      * hiccup) retries on the next panel open instead of blacking out. */
     autoCheck: async function () {
       try {
+        if (window.CSB && CSB.updateGate && CSB.updateGate.check) {
+          await CSB.updateGate.check();
+          return;
+        }
+        // Fallback (updateGate missing): legacy dismissible modal.
         var now = Date.now();
         var last = CSB.settings.get('updates.lastCheck', 0) || 0;
         if (now - last < 3600 * 1000) return;

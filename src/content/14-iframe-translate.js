@@ -443,7 +443,10 @@
       if (s) { st.target = s.target; st.auto = s.auto; }
       if (!st.auto) return;
       licensed().then(function (ok) {
-        if (ok) detectAndGo();
+        if (!ok) return;
+        updateBlocked().then(function (blocked) {
+          if (!blocked) detectAndGo();
+        });
       });
     });
   }
@@ -501,12 +504,28 @@
     return Promise.resolve(false);
   }
 
+  // Forced update gate: no work on an outdated build.
+  function updateBlocked() {
+    try {
+      if (typeof CSBUpdateGate === 'function') return CSBUpdateGate();
+    } catch (e) {}
+    return Promise.resolve(false);
+  }
+
+  // Both gates must pass.
+  function allowed() {
+    return licensed().then(function (ok) {
+      if (!ok) return false;
+      return updateBlocked().then(function (blocked) { return !blocked; });
+    });
+  }
+
   // Bus: answer pt.go / pt.restore (broadcast reaches every frame).
   try {
     chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
       if (!msg || msg.type !== 'CSB_BUS') return false;
       if (msg.cmd === 'pt.go') {
-        licensed().then(function (ok) {
+        allowed().then(function (ok) {
           if (!ok) { try { sendResponse({ ok: false }); } catch (e) {} return; }
           getSettings().then(function (s) {
             if (s) st.target = s.target;
